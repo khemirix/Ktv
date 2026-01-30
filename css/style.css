@@ -356,4 +356,9 @@ html, body {
     height: 180px;
   }
 }
-
+/* Override only for Opera when modal is open */
+@supports (-o-object-fit: cover) {
+  .modal {
+    transform: none !important;
+  }
+}

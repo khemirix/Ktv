@@ -63,3 +63,11 @@ const PlayerModal = (function(){
     }
   };
 })();
+// Save reference to modal parent
+const parent = frame.parentNode;
+
+// Move iframe to body temporarily
+document.body.appendChild(frame);
+
+// Restore after closing modal
+parent.appendChild(frame);
