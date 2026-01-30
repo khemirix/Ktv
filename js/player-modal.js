@@ -45,7 +45,22 @@ const PlayerModal = (function(){
       setTimeout(attemptFullscreen, 100);
       
       // Try again when iframe loads
-      frame.onload = attemptFullscreen;
+      frame.onload = () => {
+        attemptFullscreen();
+        // Block popups in iframe after it loads
+        setTimeout(() => blockPopupsInFrame(frame.contentWindow), 100);
+      };
+      
+      // Also try to block popups periodically
+      const blockInterval = setInterval(() => {
+        try {
+          blockPopupsInFrame(frame.contentWindow);
+        } catch (e) {}
+      }, 500);
+      
+      // Clear interval when modal is hidden
+      const modalEl = document.getElementById('playerModal');
+      modalEl?.addEventListener('hidden.bs.modal', () => clearInterval(blockInterval), { once: true });
       
     } catch (err) {
       console.error('Failed to load player:', err);
@@ -55,8 +70,38 @@ const PlayerModal = (function(){
   // Block popups globally while player is active
   const originalOpen = window.open;
   window.open = function(...args) {
+    console.log('Popup blocked:', args);
     return null;
   };
+
+  // Override addEventListener to block popup-related listeners
+  const originalAddEventListener = window.addEventListener;
+  window.addEventListener = function(type, listener, ...args) {
+    if (type === 'beforeunload' || type === 'unload') {
+      return;
+    }
+    return originalAddEventListener.call(this, type, listener, ...args);
+  };
+
+  // Block target="_blank" in iframe
+  function blockPopupsInFrame(win) {
+    try {
+      if (!win) return;
+      // Override window.open in iframe
+      win.open = () => null;
+      // Override location changes
+      const originalReplace = win.location.replace;
+      win.location.replace = function(url) {
+        if (url && (url.includes('?') || url.includes('#'))) {
+          console.log('Navigation blocked:', url);
+          return;
+        }
+        return originalReplace.call(this, url);
+      };
+    } catch (e) {
+      // Silently fail for cross-origin
+    }
+  }
 
   return {
     show: function(type, id, season, episode) {
@@ -72,6 +117,7 @@ const PlayerModal = (function(){
         try {
           frame.contentWindow.open = () => null;
           frame.contentWindow.alert = () => null;
+          blockPopupsInFrame(frame.contentWindow);
         } catch (e) {}
       }
       
