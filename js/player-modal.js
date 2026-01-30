@@ -60,6 +60,9 @@ const PlayerModal = (function(){
       if (modal) modal.hide();
       document.body.style.overflow = '';
       if (frame) frame.src = 'about:blank';
+      // Add fade class back when hiding the modal
+      const modalEl = document.getElementById('playerModal');
+      if (modalEl) modalEl.classList.add('fade');
     }
   };
 })();

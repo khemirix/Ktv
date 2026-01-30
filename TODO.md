@@ -1,0 +1,3 @@
+- [x] Change nav class from sticky-top to fixed-top in index.html
+- [x] Update .navbar background to rgba(0,0,0,0.1) and backdrop-filter to blur(20px) in css/style.css
+- [x] Add padding-top: 80px to .content-container in css/style.css
