@@ -1,13 +1,21 @@
 /* player-modal.js - Handles loading the player in a Bootstrap modal */
 
 const PlayerModal = (function(){
-  const modal = new bootstrap.Modal(document.getElementById('playerModal'), { 
-    backdrop: false, 
-    keyboard: true,
-    scroll: false
-  });
+  let modal = null;
+  
+  function initModal() {
+    if (modal) return;
+    const modalEl = document.getElementById('playerModal');
+    if (modalEl) {
+      modal = new bootstrap.Modal(modalEl, { 
+        backdrop: false, 
+        keyboard: true,
+        scroll: false
+      });
+    }
+  }
+
   const frame = document.getElementById('playerFrame');
-  const modalEl = document.getElementById('playerModal');
 
   function requestFullscreen(el) {
     if (!el) return;
@@ -17,9 +25,9 @@ const PlayerModal = (function(){
     }
   }
 
-  async function loadPlayerDetails(type, id, season = '1', episode = '1') {
+  function loadPlayerDetails(type, id, season = '1', episode = '1') {
     try {
-      frame.src = 'about:blank';
+      if (!frame) return;
       
       if (type === 'tv' && id) {
         frame.src = `https://www.vidking.net/embed/tv/${encodeURIComponent(id)}/${encodeURIComponent(season)}/${encodeURIComponent(episode)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
@@ -27,29 +35,33 @@ const PlayerModal = (function(){
         frame.src = `https://www.vidking.net/embed/movie/${encodeURIComponent(id)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
       }
 
-      // Request fullscreen after a short delay to ensure iframe is loaded
+      // Request fullscreen after a short delay
       setTimeout(() => {
         requestFullscreen(frame);
         try { frame.contentWindow && frame.contentWindow.focus(); } catch (e) {}
-      }, 500);
+      }, 300);
       
     } catch (err) {
-      console.warn('Failed to load player:', err);
+      console.error('Failed to load player:', err);
     }
   }
 
   return {
     show: function(type, id, season, episode) {
-      // Disable body scroll when modal is shown
+      initModal();
+      if (!modal) {
+        console.error('Modal not initialized');
+        return;
+      }
       document.body.style.overflow = 'hidden';
       loadPlayerDetails(type, id, season, episode);
       modal.show();
     },
     hide: function() {
-      modal.hide();
-      // Re-enable body scroll
+      initModal();
+      if (modal) modal.hide();
       document.body.style.overflow = '';
-      frame.src = 'about:blank';
+      if (frame) frame.src = 'about:blank';
       if (document.fullscreenElement) {
         const exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
         if (exit) exit.call(document).catch(() => {});
