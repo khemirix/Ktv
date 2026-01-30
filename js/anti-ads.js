@@ -2,10 +2,18 @@
  * Helper to reduce ads/popups for cross-origin embedded players.
  * - Normalizes the iframe "allow" attribute to only required features
  * - Detects ad/redirect-like URLs and blocks or sanitizes them
+ * - Works with aspect-ratio containers using absolutely positioned iframes (e.g., 16:9)
  * - Provides a small API for further checks
  *
+ * Example HTML (16:9 container):
+ *   <!-- 16:9 Aspect Ratio Container -->
+ *   <div style="position: relative; padding-bottom: 56.25%; height: 0;">
+ *     <iframe src="https://player.videasy.net/movie/299534" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;" frameborder="0" allowfullscreen></iframe>
+ *   </div>
+ *
  * Usage:
- *   blockPlayerAds(frameElement, { allowedHosts: ['vidking.net'], allowSameOrigin: false })
+ *   const iframe = document.querySelector('iframe'); // your player iframe
+ *   blockPlayerAds(iframe, { allowedHosts: ['videasy.net'], lockClicks: true });
  */
 (function (global) {
   'use strict';
@@ -110,25 +118,49 @@
     }, { passive: true });
 
     // Optionally add a translucent overlay that captures middle-clicks to avoid "open in new tab" if desired
-      // (the overlay gives an extra layer to capture clicks and avoid opening in a new tab).
+    // The overlay is attached to the nearest positioned ancestor so it works with aspect-ratio
+    // containers that use an absolutely-positioned iframe (e.g., a 16:9 wrapper).
     const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:absolute;left:0;top:0;right:0;bottom:0;pointer-events:none;';
+    overlay.style.cssText = 'position:absolute;left:0;top:0;right:0;bottom:0;pointer-events:none;z-index:2147483647;background:transparent;';
     overlay.setAttribute('aria-hidden', 'true');
-    // Make sure iframe's parent is positioned
-    const parent = iframe.parentElement;
-    if (parent) {
-      const computed = getComputedStyle(parent);
-      if (computed.position === 'static') parent.style.position = 'relative';
-      parent.appendChild(overlay);
+
+    // Find nearest positioned ancestor to attach overlay (works with aspect-ratio wrappers)
+    const container = (function findPositionedAncestor(el) {
+      let node = el.parentElement;
+      while (node && node !== document.body) {
+        const pos = getComputedStyle(node).position;
+        if (pos && pos !== 'static') return node;
+        node = node.parentElement;
+      }
+      return el.parentElement || document.body;
+    })(iframe);
+
+    if (container) {
+      const computed = getComputedStyle(container);
+      if (computed.position === 'static') container.style.position = 'relative';
+      container.appendChild(overlay);
+
       // Only enable pointer capture when "lockClicks" option is set
       if (opts && opts.lockClicks) {
+        // When capturing clicks we need the overlay to sit above the iframe. We
+        // set a z-index relative to the iframe and remember previous iframe
+        // z-index so we can restore it on teardown.
+        const prevIframeZ = iframe.style.zIndex;
+        const computedIframeZ = parseInt(getComputedStyle(iframe).zIndex, 10);
+        const baseIframeZ = isNaN(computedIframeZ) ? 1 : computedIframeZ;
+        if (!iframe.style.zIndex) iframe.style.zIndex = baseIframeZ;
+        overlay.style.zIndex = (parseInt(iframe.style.zIndex, 10) || baseIframeZ) + 1;
         overlay.style.pointerEvents = 'auto';
         // Allow clicking via a tiny "Enable controls" button if desired
         overlay.innerHTML = '<button class="play-enable-controls" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:8px 12px;border-radius:4px;border:1px solid rgba(0,0,0,0.15);background:#fff;">Enable player</button>';
         overlay.querySelector('.play-enable-controls').addEventListener('click', (e) => {
           overlay.style.pointerEvents = 'none';
+          // restore previous iframe z-index if it existed
+          if (prevIframeZ !== undefined) iframe.style.zIndex = prevIframeZ;
           e.preventDefault();
         });
+        // store prevIframeZ so teardown can restore
+        overlay._prevIframeZ = prevIframeZ;
       }
     }
 
@@ -137,7 +169,13 @@
       teardown: function () {
         observer.disconnect();
         try { iframe.removeEventListener('load', () => {}); } catch (e) {}
-        if (parent && overlay && overlay.parentElement) overlay.parentElement.removeChild(overlay);
+        if (overlay && overlay.parentElement) {
+          // restore any modified z-index on iframe
+          if (overlay._prevIframeZ !== undefined) {
+            try { iframe.style.zIndex = overlay._prevIframeZ; } catch (e) {}
+          }
+          overlay.parentElement.removeChild(overlay);
+        }
       }
     };
   }
