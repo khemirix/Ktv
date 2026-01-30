@@ -95,7 +95,7 @@
             document.title = ep.title || document.title;
           }
           // Build TV embed URL: /embed/tv/id/season/episode
-          frame.src = `https://player.videasy.net/tv/${encodeURIComponent(id)}/${encodeURIComponent(season)}/${encodeURIComponent(episode)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
+          frame.src = `https://www.vidking.net/embed/tv/${encodeURIComponent(id)}/${encodeURIComponent(season)}/${encodeURIComponent(episode)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
           // show full link (overlay + footer)
           const linkEl = document.getElementById('playerLink');
           const footerEl = document.getElementById('playerFooterLink');
@@ -109,7 +109,7 @@
             document.title = movie.title || movie.name || document.title;
           }
           // Build movie embed URL: /embed/movie/id
-          frame.src = `https://player.videasy.net/movie/${encodeURIComponent(id)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
+          frame.src = `https://www.vidking.net/embed/movie/${encodeURIComponent(id)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
           // show full link (overlay + footer)
           const linkEl = document.getElementById('playerLink');
           const footerEl = document.getElementById('playerFooterLink');

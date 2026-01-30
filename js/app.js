@@ -85,13 +85,13 @@ window.IS_TV_APP =
   function createMovieCard(item, type) {
     const year = item.release_date ? item.release_date.split('-')[0] : item.first_air_date ? item.first_air_date.split('-')[0] : 'N/A';
     return `
-      <div class="movie-card" tabindex="0" data-id="${item.id}" data-type="${type}" onclick="window.openPlayerModal('https://player.videasy.net/${type}/${item.id}?color=e50914&autoPlay=true')">
+      <div class="movie-card" tabindex="0" data-id="${item.id}" data-type="${type}" onclick="window.openPlayerModal('https://www.vidking.net/embed/${type}/${item.id}?color=e50914&autoPlay=true')">
         <img src="${item.poster_path ? TMDB.IMG + item.poster_path : 'https://via.placeholder.com/200x300?text=No+Image'}" alt="${item.title || item.name}">
         <div class="movie-card-overlay">
           <div class="movie-card-title">${item.title || item.name}</div>
           <div class="movie-card-info">${year}</div>
           <div class="movie-card-actions">
-            <button class="btn-play-small" onclick="event.stopPropagation(); window.openPlayerModal('https://player.videasy.net/${type}/${item.id}?color=e50914&autoPlay=true')">
+            <button class="btn-play-small" onclick="event.stopPropagation(); window.openPlayerModal('https://www.vidking.net/embed/${type}/${item.id}?color=e50914&autoPlay=true')">
               <i class="fas fa-play"></i> Play
             </button>
           </div>
@@ -124,7 +124,7 @@ window.IS_TV_APP =
     heroImage.style.backgroundImage = `url('${posterUrl}')`;
     heroTitle.textContent = featured.title || featured.name || 'Featured Content';
     heroDescription.textContent = featured.overview ? featured.overview.substring(0, 100) + '...' : 'Stream now';
-    heroPlayBtn.onclick = () => window.openPlayerModal(`https://player.videasy.net/${currentTab === 'tv' ? 'tv' : 'movie'}/${featured.id}?color=e50914&autoPlay=true`);
+    heroPlayBtn.onclick = () => window.openPlayerModal(`https://www.vidking.net/embed/${currentTab === 'tv' ? 'tv' : 'movie'}/${featured.id}?color=e50914&autoPlay=true`);
   }
 
   // --------------------------
