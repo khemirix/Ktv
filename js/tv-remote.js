@@ -1,37 +1,14 @@
-window.addEventListener("message", function (event) {
-  if (!event.data || event.data.type !== "TV_KEY") return;
+window.addEventListener("message", function (e) {
+  console.log("TV KEY:", e.data);
 
-  const key = event.data.keyCode;
+  if (!e.data || e.data.type !== "TV_KEY") return;
 
-  switch (key) {
-    case 13: // ENTER
-      handleEnter();
-      break;
-
-    case 37: // LEFT
-      handleLeft();
-      break;
-
-    case 39: // RIGHT
-      handleRight();
-      break;
-
-    case 38: // UP
-      handleUp();
-      break;
-
-    case 40: // DOWN
-      handleDown();
-      break;
-
-    case 10009: // BACK (Samsung remote)
-      handleBack();
-      break;
+  switch (e.data.keyCode) {
+    case 37: console.log("LEFT"); break;
+    case 38: console.log("UP"); break;
+    case 39: console.log("RIGHT"); break;
+    case 40: console.log("DOWN"); break;
+    case 13: console.log("ENTER"); break;
+    case 10009: console.log("BACK"); break;
   }
 });
-if (key === 10009) {
-  const modal = bootstrap.Modal.getInstance(
-    document.getElementById("playerModal")
-  );
-  if (modal) modal.hide();
-}
