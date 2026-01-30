@@ -35,11 +35,17 @@ const PlayerModal = (function(){
         frame.src = `https://www.vidking.net/embed/movie/${encodeURIComponent(id)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
       }
 
-      // Request fullscreen after a short delay
-      setTimeout(() => {
+      // Request fullscreen immediately and when iframe loads
+      const attemptFullscreen = () => {
         requestFullscreen(frame);
         try { frame.contentWindow && frame.contentWindow.focus(); } catch (e) {}
-      }, 300);
+      };
+      
+      // Try immediately
+      setTimeout(attemptFullscreen, 100);
+      
+      // Try again when iframe loads
+      frame.onload = attemptFullscreen;
       
     } catch (err) {
       console.error('Failed to load player:', err);
