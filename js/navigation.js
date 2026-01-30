@@ -258,23 +258,8 @@ const FocusNav = (function() {
   function activateFocused() {
     const card = getFocusedCard();
     if (card) {
-      // Get the data from the card
-      const type = card.dataset.type;
-      const id = card.dataset.id;
-      
-      // Try to use PlayerModal if available, otherwise dispatch click
-      if (typeof PlayerModal !== 'undefined' && PlayerModal.show) {
-        console.log(`FocusNav: Activating ${type} ${id}`);
-        PlayerModal.show(type, id);
-      } else {
-        // Fallback: dispatch click event
-        const clickEvent = new MouseEvent('click', {
-          bubbles: true,
-          cancelable: true,
-          view: window
-        });
-        card.dispatchEvent(clickEvent);
-      }
+      // Default behavior: trigger native click on the focused card
+      card.click();
     }
   }
 
@@ -298,14 +283,7 @@ const FocusNav = (function() {
       return;
     }
 
-    // Normalize key and support various TV remote key names and keyCodes
-    const k = event.key || '';
-    const keyCode = event.keyCode || event.which || 0;
-
-    // Acceptable activation keys from a variety of remotes/browsers
-    const isActivate = k === 'Enter' || k === ' ' || k === 'OK' || k === 'Select' || k === 'NumpadEnter' || keyCode === 13;
-
-    switch (k) {
+    switch (event.key) {
       case 'ArrowLeft':
         event.preventDefault();
         focusLeft();
@@ -322,18 +300,17 @@ const FocusNav = (function() {
         event.preventDefault();
         focusDown();
         break;
+      case 'Enter':
+      case ' ':
+        event.preventDefault();
+        activateFocused();
+        break;
       case 'Escape':
       case 'Backspace':
         event.preventDefault();
         handleBack();
         break;
       default:
-        // Activation fallback: check isActivate for keys that might not appear in event.key
-        if (isActivate) {
-          event.preventDefault();
-          activateFocused();
-          break;
-        }
         return;
     }
   }
@@ -366,18 +343,8 @@ const FocusNav = (function() {
       return;
     }
 
-    // Register keyboard handler (capture to catch remote keys before other handlers)
-    window.addEventListener('keydown', handleKeyDown, true);
-
-    // Mouse detection for TV remote mode
-    let mouseTimeout;
-    window.addEventListener('mousemove', () => {
-      document.body.classList.add('mouse-active');
-      clearTimeout(mouseTimeout);
-      mouseTimeout = setTimeout(() => {
-        document.body.classList.remove('mouse-active');
-      }, 3000);
-    });
+    // Register keyboard handler
+    window.addEventListener('keydown', handleKeyDown);
 
     state.isInitialized = true;
     console.log('FocusNav: Navigation system initialized');
@@ -399,32 +366,18 @@ const FocusNav = (function() {
     state.rowIndex = 0;
     state.colIndex = 0;
 
-    // Make cards focusable and add mouse support
-    state.rows.forEach((row, rowIdx) => {
-      getCardsInRow(rowIdx).forEach((card, colIdx) => {
+    // Make cards focusable
+    state.rows.forEach(row => {
+      getCardsInRow(state.rows.indexOf(row)).forEach((card, idx) => {
         card.setAttribute('tabindex', '-1');
         card.setAttribute('role', 'button');
-        card.setAttribute('aria-label', `${card.textContent || 'Item'} ${colIdx + 1}`);
-
-        // TV Mouse support: hover to focus, click to activate
-        card.addEventListener('mouseenter', () => {
-          state.rowIndex = rowIdx;
-          state.colIndex = colIdx;
-          updateFocusDisplay();
-        });
-
-        card.addEventListener('click', (e) => {
-          state.rowIndex = rowIdx;
-          state.colIndex = colIdx;
-          updateFocusDisplay();
-          // Let the existing click handler in app.js handle the actual activation
-        });
+        card.setAttribute('aria-label', `${card.textContent || 'Item'} ${idx + 1}`);
       });
     });
 
     // Apply initial focus
     updateFocusDisplay();
-    console.log(`FocusNav: Registered ${state.rows.length} rows with mouse support`);
+    console.log(`FocusNav: Registered ${state.rows.length} rows`);
   }
 
   /**
