@@ -79,14 +79,6 @@
       infoEl.hidden = false;
     }
 
-    // Helper to request fullscreen
-    function openFullscreen(el) {
-      if (!el) return;
-      const request = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
-      if (request) {
-        request.call(el).catch(() => {});
-      }
-    }
 
     // Load details from OMDb and set up embed
     async function loadPlayerDetails() {
@@ -120,10 +112,8 @@
           if (linkEl) { linkEl.href = frame.src; linkEl.textContent = frame.src; }
           if (footerEl) { footerEl.href = frame.src; footerEl.textContent = frame.src; }
           
-          // For movies, request fullscreen when iframe loads
+          // For movies, focus the iframe when it loads; do NOT request fullscreen programmatically
           frame.addEventListener('load', () => {
-            const shell = document.querySelector('.player-shell');
-            openFullscreen(shell);
             try { frame.contentWindow && frame.contentWindow.focus(); } catch (e) {}
           }, { once: true });
         }

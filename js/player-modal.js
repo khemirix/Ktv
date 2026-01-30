@@ -17,32 +17,26 @@ const PlayerModal = (function(){
 
   const frame = document.getElementById('playerFrame');
 
-  function requestFullscreen(el) {
-    if (!el) return;
-    setTimeout(() => {
-      const request = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
-      if (request) {
-        request.call(el).catch(() => {});
-      }
-    }, 1000);
-  }
 
   function loadPlayerDetails(type, id, season = '1', episode = '1') {
     try {
       if (!frame) return;
       
       if (type === 'tv' && id) {
+        // Ensure the iframe can enter fullscreen manually via user interaction
+        frame.setAttribute('allow', (frame.getAttribute('allow') || '') + ' fullscreen; autoplay');
+        frame.setAttribute('allowfullscreen', '');
         frame.src = `https://player.videasy.net/tv/${encodeURIComponent(id)}/${encodeURIComponent(season)}/${encodeURIComponent(episode)}?overlay=true&Play=true&color=e50914&nextEpisode=true&episodeSelector=true`;
       } else if (type === 'movie' && id) {
+        // Ensure the iframe can enter fullscreen manually via user interaction
+        frame.setAttribute('allow', (frame.getAttribute('allow') || '') + ' fullscreen; autoplay');
+        frame.setAttribute('allowfullscreen', '');
         frame.src = `https://player.videasy.net/movie/${encodeURIComponent(id)}?overlay=true&Play=true&color=e50914`;
       }
 
-      // Request fullscreen after iframe loads
+      // After iframe loads, focus the frame but do NOT request fullscreen programmatically
       frame.onload = () => {
-        try { 
-          frame.contentWindow && frame.contentWindow.focus(); 
-        } catch (e) {}
-        requestFullscreen(frame);
+        try { frame.contentWindow && frame.contentWindow.focus(); } catch (e) {}
       };
       
     } catch (err) {
@@ -66,10 +60,6 @@ const PlayerModal = (function(){
       if (modal) modal.hide();
       document.body.style.overflow = '';
       if (frame) frame.src = 'about:blank';
-      if (document.fullscreenElement) {
-        const exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
-        if (exit) exit.call(document).catch(() => {});
-      }
     }
   };
 })();
