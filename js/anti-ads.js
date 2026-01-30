@@ -8,7 +8,7 @@
  * Example HTML (16:9 container):
  *   <!-- 16:9 Aspect Ratio Container -->
  *   <div style="position: relative; padding-bottom: 56.25%; height: 0;">
- *     <iframe src="https://player.videasy.net/movie/299534" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;" frameborder="0" allowfullscreen></iframe>
+ *     <iframe src="https://www.vidking.net/embed/movie/299534" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;" frameborder="0" allowfullscreen></iframe>
  *   </div>
  *
  * Usage:
