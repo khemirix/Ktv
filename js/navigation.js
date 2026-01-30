@@ -298,7 +298,14 @@ const FocusNav = (function() {
       return;
     }
 
-    switch (event.key) {
+    // Normalize key and support various TV remote key names and keyCodes
+    const k = event.key || '';
+    const keyCode = event.keyCode || event.which || 0;
+
+    // Acceptable activation keys from a variety of remotes/browsers
+    const isActivate = k === 'Enter' || k === ' ' || k === 'OK' || k === 'Select' || k === 'NumpadEnter' || keyCode === 13;
+
+    switch (k) {
       case 'ArrowLeft':
         event.preventDefault();
         focusLeft();
@@ -315,17 +322,18 @@ const FocusNav = (function() {
         event.preventDefault();
         focusDown();
         break;
-      case 'Enter':
-      case ' ':
-        event.preventDefault();
-        activateFocused();
-        break;
       case 'Escape':
       case 'Backspace':
         event.preventDefault();
         handleBack();
         break;
       default:
+        // Activation fallback: check isActivate for keys that might not appear in event.key
+        if (isActivate) {
+          event.preventDefault();
+          activateFocused();
+          break;
+        }
         return;
     }
   }
@@ -358,8 +366,8 @@ const FocusNav = (function() {
       return;
     }
 
-    // Register keyboard handler
-    window.addEventListener('keydown', handleKeyDown);
+    // Register keyboard handler (capture to catch remote keys before other handlers)
+    window.addEventListener('keydown', handleKeyDown, true);
 
     // Mouse detection for TV remote mode
     let mouseTimeout;
