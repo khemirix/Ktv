@@ -52,6 +52,12 @@ const PlayerModal = (function(){
     }
   }
 
+  // Block popups globally while player is active
+  const originalOpen = window.open;
+  window.open = function(...args) {
+    return null;
+  };
+
   return {
     show: function(type, id, season, episode) {
       initModal();
@@ -60,6 +66,15 @@ const PlayerModal = (function(){
         return;
       }
       document.body.style.overflow = 'hidden';
+      
+      // Block popups from the iframe
+      if (frame && frame.contentWindow) {
+        try {
+          frame.contentWindow.open = () => null;
+          frame.contentWindow.alert = () => null;
+        } catch (e) {}
+      }
+      
       loadPlayerDetails(type, id, season, episode);
       modal.show();
     },
