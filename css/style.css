@@ -343,3 +343,10 @@ html, body {
     height: 180px;
   }
 }
+.tv-mode {
+  zoom: 1.1;
+}
+
+.tv-mode input {
+  font-size: 22px;
+}
