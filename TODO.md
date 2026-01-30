@@ -1,2 +1,2 @@
-- [x] Make navbar background more transparent (rgba(0,0,0,0.05))
-- [x] Restructure navbar HTML to put brand, tabs, and search on the same line, with tabs and search on the right
+- [ ] Change movie-card-overlay background to gradient from black to transparent
+- [ ] Make overlay always visible (opacity: 1) instead of on hover
