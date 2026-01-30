@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ktv — TV-First Streaming Demo</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="logo">Ktv</div>
+    <nav class="tabs" role="tablist">
+      <div class="tab" data-tab="movies" tabindex="0">Movies</div>
+      <div class="tab" data-tab="tv" tabindex="0">TV Shows</div>
+    </nav>
+    <div class="search-wrap">
+      <input id="searchInput" placeholder="Search" aria-label="Search" />
+    </div>
+  </header>
+
+  <main id="main" class="main">
+    <!-- Rows will be injected here -->
+  </main>
+
+  <footer class="attribution">This product uses the TMDB API but is not endorsed or certified by TMDB.</footer>
+
+  <script src="js/tmdb.js"></script>
+  <script src="js/navigation.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

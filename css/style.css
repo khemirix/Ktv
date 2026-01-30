@@ -1,0 +1,41 @@
+/* Minimal Netflix-like TV UI */
+:root{
+  --bg:#0b0b0b;
+  --muted:#b3b3b3;
+  --accent:#e50914;
+}
+*{box-sizing:border-box}
+html,body{height:100%;background:var(--bg);color:#fff;font-family:Helvetica, Arial, sans-serif}
+.topbar{height:84px;display:flex;align-items:center;padding:0 40px;gap:24px;background:linear-gradient(180deg, rgba(0,0,0,0.6), transparent)}
+.logo{font-weight:700;font-size:28px;color:var(--accent)}
+.tabs{display:flex;gap:12px}
+.tab{padding:8px 14px;border-radius:4px;color:var(--muted);font-size:18px}
+.tab.active{color:#fff;background:rgba(255,255,255,0.04);box-shadow:0 6px 18px rgba(0,0,0,0.6)}
+.search-wrap{margin-left:auto}
+#searchInput{width:360px;padding:10px 14px;border-radius:6px;background:#111;border:1px solid #222;color:#fff}
+
+.main{padding:28px 40px 80px}
+.row{margin-bottom:28px}
+.row-title{font-size:20px;margin:8px 0 12px;color:var(--muted)}
+.row-list{display:flex;gap:12px;overflow:hidden}
+.card{width:220px;height:320px;flex:0 0 auto;border-radius:6px;background:#222;position:relative;transform-origin:center;transition:transform .18s ease, box-shadow .18s ease}
+.card img{width:100%;height:100%;object-fit:cover;border-radius:6px}
+.card.focused{transform:scale(1.12);box-shadow:0 20px 40px rgba(0,0,0,0.7);z-index:3}
+.card.dim{opacity:0.35}
+
+.attribution{position:fixed;left:40px;bottom:10px;color:var(--muted);font-size:12px}
+
+/* Hide scrollbar but allow scrolling */
+.row-list::-webkit-scrollbar{height:8px}
+.row-list{scrollbar-width:none}
+
+/* Player page styles */
+.player-page{background:var(--bg)}
+.player-shell{position:fixed;inset:0}
+#playerFrame{width:100%;height:100%}
+.player-footer{position:fixed;left:20px;bottom:12px;color:var(--muted);font-size:13px}
+
+/* TV focus helpers for top tabs */
+.tab:focus{outline:2px solid var(--accent);outline-offset:2px}
+
+@media (max-width:1200px){#searchInput{width:220px}.card{width:160px;height:240px}}

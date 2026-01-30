@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Player</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="player-page">
+  <div class="player-shell">
+    <iframe id="playerFrame" src="about:blank" frameborder="0" allowfullscreen></iframe>
+  </div>
+  <div class="player-footer">Press Back to return • This product uses the TMDB API but is not endorsed or certified by TMDB.</div>
+
+  <script>
+    // parse query: ?type=movie&id=12345
+    function qs() { return Object.fromEntries(new URLSearchParams(location.search)); }
+    const params = qs();
+    const id = params.id || '';
+    // Player iframe points to the requested URL pattern
+    const frame = document.getElementById('playerFrame');
+    if (id) frame.src = `https://mywebsite.com/${id}`;
+
+    // Backspace/Escape go back
+    window.addEventListener('keydown', (e)=>{
+      if (e.key === 'Backspace' || e.key === 'Escape') history.back();
+    });
+  </script>
+</body>
+</html>
