@@ -1,3 +1,8 @@
+window.IS_TV_APP =
+  navigator.userAgent.includes("Tizen") ||
+  navigator.userAgent.includes("SMART-TV") ||
+  window.location !== window.parent.location;
+
 /* app.js - Modern streaming site UI */
 (async function(){
   const mainContent = document.getElementById('mainContent');

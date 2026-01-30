@@ -350,3 +350,17 @@ html, body {
 .tv-mode input {
   font-size: 22px;
 }
+.tv-mode * {
+  cursor: none !important;
+}
+
+.tv-mode :focus {
+  outline: 4px solid #0d6efd;
+  transform: scale(1.08);
+  transition: transform 0.12s ease;
+  z-index: 1000;
+}
+
+.tv-mode .movie-card:focus img {
+  transform: scale(1.1);
+}

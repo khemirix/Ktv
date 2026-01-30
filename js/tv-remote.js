@@ -5,69 +5,33 @@ window.addEventListener("message", function (event) {
 
   switch (key) {
     case 13: // ENTER
-      tvEnter();
+      handleEnter();
       break;
 
     case 37: // LEFT
-      tvLeft();
+      handleLeft();
       break;
 
     case 39: // RIGHT
-      tvRight();
+      handleRight();
       break;
 
     case 38: // UP
-      tvUp();
+      handleUp();
       break;
 
     case 40: // DOWN
-      tvDown();
+      handleDown();
       break;
 
-    case 10009: // BACK (Samsung)
-      tvBack();
+    case 10009: // BACK (Samsung remote)
+      handleBack();
       break;
   }
 });
-
-/* ========= PLAYER CONTROL ========= */
-
-function getVideo() {
-  return document.querySelector("video");
-}
-
-function tvEnter() {
-  const active = document.activeElement;
-  if (active) active.click();
-
-  const video = getVideo();
-  if (video) video.paused ? video.play() : video.pause();
-}
-
-function tvLeft() {
-  const video = getVideo();
-  if (video) video.currentTime -= 10;
-}
-
-function tvRight() {
-  const video = getVideo();
-  if (video) video.currentTime += 10;
-}
-
-function tvUp() {
-  const video = getVideo();
-  if (video) video.volume = Math.min(video.volume + 0.1, 1);
-}
-
-function tvDown() {
-  const video = getVideo();
-  if (video) video.volume = Math.max(video.volume - 0.1, 0);
-}
-
-function tvBack() {
-  const modalEl = document.getElementById("playerModal");
-  if (!modalEl) return;
-
-  const modal = bootstrap.Modal.getInstance(modalEl);
+if (key === 10009) {
+  const modal = bootstrap.Modal.getInstance(
+    document.getElementById("playerModal")
+  );
   if (modal) modal.hide();
 }
