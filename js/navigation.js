@@ -258,13 +258,23 @@ const FocusNav = (function() {
   function activateFocused() {
     const card = getFocusedCard();
     if (card) {
-      // Trigger the click event directly on the card
-      const clickEvent = new MouseEvent('click', {
-        bubbles: true,
-        cancelable: true,
-        view: window
-      });
-      card.dispatchEvent(clickEvent);
+      // Get the data from the card
+      const type = card.dataset.type;
+      const id = card.dataset.id;
+      
+      // Try to use PlayerModal if available, otherwise dispatch click
+      if (typeof PlayerModal !== 'undefined' && PlayerModal.show) {
+        console.log(`FocusNav: Activating ${type} ${id}`);
+        PlayerModal.show(type, id);
+      } else {
+        // Fallback: dispatch click event
+        const clickEvent = new MouseEvent('click', {
+          bubbles: true,
+          cancelable: true,
+          view: window
+        });
+        card.dispatchEvent(clickEvent);
+      }
     }
   }
 
