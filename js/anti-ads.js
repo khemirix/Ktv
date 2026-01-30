@@ -1,20 +1,14 @@
-/* js/anti-ads.js
- * Helper to reduce ads/popups for cross-origin embedded players.
- * - Normalizes the iframe "allow" attribute to only required features
- * - Detects ad/redirect-like URLs and blocks or sanitizes them
- * - Works with aspect-ratio containers using absolutely positioned iframes (e.g., 16:9)
- * - Provides a small API for further checks
- *
- * Example HTML (16:9 container):
- *   <!-- 16:9 Aspect Ratio Container -->
- *   <div style="position: relative; padding-bottom: 56.25%; height: 0;">
- *     <iframe src="https://player.videasy.net/movie/299534" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;" frameborder="0" allowfullscreen></iframe>
- *   </div>
- *
- * Usage:
- *   const iframe = document.querySelector('iframe'); // your player iframe
- *   blockPlayerAds(iframe, { allowedHosts: ['videasy.net'], lockClicks: true });
+/* js/anti-ads.js - REMOVED
+ * The ad-block helper has been removed per repository cleanup.
+ * This file is intentionally left as a stub to avoid missing-file errors.
  */
+
+// No-op: anti-ads functionality removed
+(function (global) {
+  'use strict';
+  global.blockPlayerAds = function () { return { installed: false }; };
+})(window);
+
 (function (global) {
   'use strict';
 
