@@ -75,8 +75,11 @@ const NAV = (function(){
       const current = row.querySelectorAll('.card')[state.colIndex] || row.querySelector('.card');
       if (current) {
         const id = current.dataset.id;
-        // navigate to player using slash-separated params: ?type/id
-        location.href = `player.html?${current.dataset.type}/${id}`;
+        const type = current.dataset.type;
+        // Open player modal instead of navigating
+        if (typeof PlayerModal !== 'undefined') {
+          PlayerModal.show(type, id);
+        }
       }
     } else if (key === 'Backspace' || key === 'Escape'){
       // go back
