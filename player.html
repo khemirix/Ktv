@@ -18,99 +18,87 @@
 
   <script src="js/tmdb.js"></script>
   <script>
-    // parse query: ?type=movie&id=tt12345&season=1&episode=2 or ?url=<encoded URL>
-    function qs() { return Object.fromEntries(new URLSearchParams(location.search)); }
-    const params = qs();
-    const id = params.id || '';
-    const type = params.type || '';
-    const season = params.season || params.s || '';
-    const episode = params.episode || params.ep || '';
-    const explicit = params.url ? decodeURIComponent(params.url) : '';
+    // Parse slash-separated query: ?movie/tt12345 or ?tv/tt12345/1/2
+    let raw = location.search || '';
+    if (raw.startsWith('?')) raw = raw.slice(1);
+    if (!raw && location.hash && location.hash.startsWith('#')) raw = location.hash.slice(1);
+    const parts = raw.split('/').filter(Boolean);
+
+    const type = parts[0] || '';
+    const id = parts[1] || '';
+    const season = parts[2] || '1';
+    const episode = parts[3] || '1';
+
     const frame = document.getElementById('playerFrame');
     const infoEl = document.getElementById('playerInfo');
     const titleEl = document.getElementById('playerTitle');
     const overviewEl = document.getElementById('playerOverview');
 
-    // Default embed (movie fallback)
-    const defaultEmbed = 'https://www.vidking.net/embed/movie/1078605?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true';
-
-    // helper to set info overlay
-    function showInfo(title, overview){
+    // Helper to show info overlay
+    function showInfo(title, overview) {
       if (!title && !overview) return;
       titleEl.textContent = title || '';
       overviewEl.textContent = overview || '';
       infoEl.hidden = false;
     }
 
-    async function loadDetailsAndEmbed(){
-      // First, fetch OMDb details if possible
-      try{
-        if (type === 'tv' && id && season && episode && TMDB.getEpisode){
-          const ep = await TMDB.getEpisode(id, season, episode);
-          if (ep){
-            showInfo(ep.title || `${ep.series_id} S${ep.season}E${ep.episode}`, ep.overview || '');
-            document.title = ep.title || document.title;
-          }
-        } else if (id && TMDB.getById){
-          const md = await TMDB.getById(id);
-          if (md){
-            showInfo(md.title || md.name || '', md.overview || '');
-            document.title = md.title || md.name || document.title;
-          }
-        }
-      }catch(err){
-        // ignore fetch errors, still continue to set embed
-        console.warn('Details load failed', err);
-      }
-
-      // Build embed URL according to requested pattern:
-      // - Movie:  /embed/movie/{tmdbId}
-      // - TV:     /embed/tv/{tmdbId}/{season}/{episode}
-      if (explicit) {
-        frame.src = explicit;
-      } else if (type === 'movie' && id) {
-        frame.src = `https://www.vidking.net/embed/movie/${encodeURIComponent(id)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
-      } else if (type === 'tv' && id) {
-        const s = season || '1';
-        const ep = episode || '1';
-        frame.src = `https://www.vidking.net/embed/tv/${encodeURIComponent(id)}/${encodeURIComponent(s)}/${encodeURIComponent(ep)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
-      } else if (id) {
-        // If no type provided but id exists, assume movie
-        frame.src = `https://www.vidking.net/embed/movie/${encodeURIComponent(id)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
-      } else {
-        frame.src = defaultEmbed;
-      }
-    }
-
-    // When the iframe loads, attempt to open the player container in fullscreen.
-    function openFullscreen(el){
+    // Helper to request fullscreen
+    function openFullscreen(el) {
       if (!el) return;
       const request = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
       if (request) {
-        request.call(el).catch(()=>{});
+        request.call(el).catch(() => {});
       }
     }
 
-    frame.addEventListener('load', ()=>{
-      // Try to fullscreen the container so the iframe becomes fullscreen
-      const shell = document.querySelector('.player-shell');
-      openFullscreen(shell);
-      // try focusing iframe for remote/keyboard
-      try { frame.contentWindow && frame.contentWindow.focus(); } catch(e){}
-    });
+    // Load details from OMDb and set up embed
+    async function loadPlayerDetails() {
+      try {
+        if (type === 'tv' && id && TMDB.getEpisode) {
+          // Fetch TV episode details
+          const ep = await TMDB.getEpisode(id, season, episode);
+          if (ep) {
+            showInfo(ep.title || `Season ${ep.season} Episode ${ep.episode}`, ep.overview || '');
+            document.title = ep.title || document.title;
+          }
+          // Build TV embed URL: /embed/tv/id/season/episode
+          frame.src = `https://www.vidking.net/embed/tv/${encodeURIComponent(id)}/${encodeURIComponent(season)}/${encodeURIComponent(episode)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
+        } else if (type === 'movie' && id && TMDB.getById) {
+          // Fetch movie details
+          const movie = await TMDB.getById(id);
+          if (movie) {
+            showInfo(movie.title || movie.name || '', movie.overview || '');
+            document.title = movie.title || movie.name || document.title;
+          }
+          // Build movie embed URL: /embed/movie/id
+          frame.src = `https://www.vidking.net/embed/movie/${encodeURIComponent(id)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
+          
+          // For movies, request fullscreen when iframe loads
+          frame.addEventListener('load', () => {
+            const shell = document.querySelector('.player-shell');
+            openFullscreen(shell);
+            try { frame.contentWindow && frame.contentWindow.focus(); } catch (e) {}
+          }, { once: true });
+        }
+      } catch (err) {
+        console.warn('Failed to load details:', err);
+      }
+    }
 
-    // Backspace/Escape: exit fullscreen if active, otherwise go back
-    window.addEventListener('keydown', async (e)=>{
-      if (e.key === 'Backspace' || e.key === 'Escape'){
+    // Handle Back/Escape keys
+    window.addEventListener('keydown', async (e) => {
+      if (e.key === 'Backspace' || e.key === 'Escape') {
         if (document.fullscreenElement) {
           const exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
-          if (exit) await exit.call(document).catch(()=>{});
-        } else history.back();
+          if (exit) await exit.call(document).catch(() => {});
+        } else {
+          history.back();
+        }
       }
     });
 
-    // start
-    loadDetailsAndEmbed();
+    // Initialize
+    loadPlayerDetails();
   </script>
 </body>
 </html>
