@@ -75,8 +75,8 @@ const NAV = (function(){
       const current = row.querySelectorAll('.card')[state.colIndex] || row.querySelector('.card');
       if (current) {
         const id = current.dataset.id;
-        // navigate to player
-        location.href = `player.html?type=${current.dataset.type}&id=${id}`;
+        // navigate to player using slash-separated params: ?type/id
+        location.href = `player.html?${current.dataset.type}/${id}`;
       }
     } else if (key === 'Backspace' || key === 'Escape'){
       // go back

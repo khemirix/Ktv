@@ -18,6 +18,8 @@
       img.src = it.poster_path ? (TMDB.IMG + it.poster_path) : '';
       img.alt = it.title || it.name || 'poster';
       c.appendChild(img);
+      // Make cards clickable with mouse/tap using the new slash-style player params
+      c.addEventListener('click', ()=>{ location.href = `player.html?${type}/${it.id}`; });
       list.appendChild(c);
     });
     row.appendChild(h); row.appendChild(list);
