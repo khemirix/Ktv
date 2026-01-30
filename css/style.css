@@ -81,7 +81,7 @@ html, body {
 }
 
 .search-input::placeholder {
-  color: var(--text-muted);
+  color:grey !important;
 }
 
 /* Hero Section */
