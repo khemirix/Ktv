@@ -3,54 +3,50 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="tv" content="yes">
   <title>Ktv - Stream Movies & Shows</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="css/style.css">
 </head>
-<body>
+<body role="application">
   <!-- Navigation -->
-  <nav class="navbar navbar-dark bg-dark sticky-top">
+  <nav class="navbar navbar-dark bg-dark sticky-top" role="navigation" aria-label="Main navigation">
     <div class="container-fluid">
       <span class="navbar-brand mb-0 h1">
-        <i class="fas fa-film"></i> Ktv
+        <i class="fas fa-film" aria-hidden="true"></i> Ktv
       </span>
       <div class="d-flex gap-3 w-100 ms-3">
-        <div class="nav-tabs-custom">
-          <button class="tab-btn active" data-tab="movies">Movies</button>
-          <button class="tab-btn" data-tab="tv">TV Shows</button>
+        <div class="nav-tabs-custom" role="tablist" aria-label="Content type selection">
+          <button class="tab-btn active" data-tab="movies" role="tab" aria-selected="true" aria-controls="movies-content">Movies</button>
+          <button class="tab-btn" data-tab="tv" role="tab" aria-selected="false" aria-controls="tv-content">TV Shows</button>
         </div>
-        <input type="text" id="searchInput" class="form-control form-control-sm search-input" placeholder="Search movies, shows..." aria-label="Search">
+        <input type="text" id="searchInput" class="form-control form-control-sm search-input" placeholder="Search movies, shows..." aria-label="Search for movies or TV shows">
       </div>
     </div>
   </nav>
 
   <!-- Hero Section -->
-  <div id="heroSection" class="hero-section">
+  <div id="heroSection" class="hero-section" role="region" aria-label="Featured content">
     <div class="hero-content">
       <h1 id="heroTitle">Welcome to Ktv</h1>
       <p id="heroDescription">Stream unlimited movies and TV shows</p>
-      <button id="heroPlayBtn" class="btn btn-primary btn-lg">
-        <i class="fas fa-play"></i> Watch Now
+      <button id="heroPlayBtn" class="btn btn-primary btn-lg" aria-label="Play featured content">
+        <i class="fas fa-play" aria-hidden="true"></i> Watch Now
       </button>
     </div>
-    <div id="heroImage" class="hero-image"></div>
+    <div id="heroImage" class="hero-image" aria-hidden="true"></div>
   </div>
 
   <!-- Content Grid -->
-  <div class="container-fluid content-container">
+  <main class="container-fluid content-container" role="main">
     <div id="mainContent">
       <!-- Sections will be injected here -->
     </div>
-  </div>
+  </main>
 
   <!-- Player Modal -->
-  <div class="modal fade" id="playerModal" tabindex="-1" aria-hidden="true" data-bs-scroll="false">
-    <div class="modal-dialog modal-fullscreen" style="margin:0;max-width:100%">
-      <div class="modal-content" style="height:100vh;background:#000;border:none;margin:0;padding:0">
-        <div class="modal-body" style="padding:0;height:100vh;margin:0">
-          <iframe id="playerFrame" src="about:blank" style="width:100%;height:100%;border:none;display:block" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-presentation" autoplay></iframe>
-        </div>
+  <div class="modal fade" id="playerModal" tabindex="-1" aria-labelledby="playerTitle" aria-hidden="true" data-bs-scroll="false" role="dialog">
       </div>
     </div>
   </div>

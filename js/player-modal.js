@@ -1,7 +1,8 @@
-/* player-modal.js - Handles loading the player in a Bootstrap modal */
+/* player-modal.js - Handles loading the player in a Bootstrap modal with TV remote support */
 
 const PlayerModal = (function(){
   let modal = null;
+  let isPlayerOpen = false;
   
   function initModal() {
     if (modal) return;
@@ -9,7 +10,7 @@ const PlayerModal = (function(){
     if (modalEl) {
       modal = new bootstrap.Modal(modalEl, { 
         backdrop: false, 
-        keyboard: true,
+        keyboard: false,
         scroll: false
       });
     }
@@ -50,6 +51,53 @@ const PlayerModal = (function(){
     }
   }
 
+  // Handle keyboard controls for remote
+  function setupRemoteControls() {
+    document.addEventListener('keydown', handleRemoteKey, true);
+  }
+
+  function removeRemoteControls() {
+    document.removeEventListener('keydown', handleRemoteKey, true);
+  }
+
+  function handleRemoteKey(e) {
+    if (!isPlayerOpen) return;
+    
+    // Escape/Back button to close player
+    if (e.key === 'Escape' || e.key === 'Backspace') {
+      e.preventDefault();
+      PlayerModal.hide();
+      return;
+    }
+    
+    // Allow spacebar to work in player (play/pause)
+    if (e.key === ' ') {
+      e.preventDefault();
+      try {
+        frame.contentWindow && frame.contentWindow.postMessage({action: 'play-pause'}, '*');
+      } catch (err) {}
+      return;
+    }
+    
+    // Arrow keys - allow pass-through to player
+    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+      e.preventDefault();
+      try {
+        frame.contentWindow && frame.contentWindow.postMessage({action: 'key', key: e.key}, '*');
+      } catch (err) {}
+      return;
+    }
+    
+    // Enter key for selection in player UI
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      try {
+        frame.contentWindow && frame.contentWindow.postMessage({action: 'enter'}, '*');
+      } catch (err) {}
+      return;
+    }
+  }
+
   return {
     show: function(type, id, season, episode) {
       initModal();
@@ -57,12 +105,16 @@ const PlayerModal = (function(){
         console.error('Modal not initialized');
         return;
       }
+      isPlayerOpen = true;
       document.body.style.overflow = 'hidden';
       loadPlayerDetails(type, id, season, episode);
       modal.show();
+      setupRemoteControls();
     },
     hide: function() {
       initModal();
+      isPlayerOpen = false;
+      removeRemoteControls();
       if (modal) modal.hide();
       document.body.style.overflow = '';
       if (frame) frame.src = 'about:blank';
