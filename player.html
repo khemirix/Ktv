@@ -7,6 +7,20 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body class="player-page">
+  <script>
+(function () {
+  const block = () => {
+    try {
+      Object.defineProperty(window, 'location', {
+        configurable: false,
+        writable: false
+      });
+    } catch (e) {}
+  };
+  block();
+})();
+</script>
+
   <div class="player-shell">
     <iframe id="playerFrame" src="about:blank" frameborder="0" allowfullscreen sandbox="allow-scripts allow-same-origin allow-presentation" allow="autoplay; fullscreen" ></iframe>
   </div>
