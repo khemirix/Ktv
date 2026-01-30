@@ -48,6 +48,24 @@ const TMDB = (function(){
     };
   }
 
+  // Fetch a specific TV episode using Series imdbID + Season + Episode
+  async function getEpisode(imdbSeriesID, season, episode){
+    if (!imdbSeriesID || !season || !episode) return null;
+    const data = await fetchEndpoint({i: imdbSeriesID, Season: season, Episode: episode, plot: 'short'});
+    if (!data || data.Response === 'False') return null;
+    return {
+      id: data.imdbID || `${imdbSeriesID}-S${season}E${episode}`,
+      series_id: imdbSeriesID,
+      season: String(season),
+      episode: String(episode),
+      title: data.Title,
+      overview: data.Plot,
+      release_date: data.Year,
+      runtime: data.Runtime,
+      poster_path: data.Poster && data.Poster !== 'N/A' ? data.Poster : ''
+    };
+  }
+
   // Provide TMDB-like endpoints by performing broad OMDb searches.
   // These are best-effort: OMDb doesn't have 'now playing' or 'popular' feeds.
   function moviesNowPlaying(){ return search('the',1); }

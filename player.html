@@ -10,10 +10,15 @@
   <div class="player-shell">
     <iframe id="playerFrame" src="about:blank" frameborder="0" allowfullscreen allow="autoplay; fullscreen"></iframe>
   </div>
+  <div class="player-info" id="playerInfo" aria-live="polite" hidden>
+    <h1 id="playerTitle">Loading…</h1>
+    <p id="playerOverview"></p>
+  </div>
   <div class="player-footer">Press Back to return • This product uses the OMDb API but is not endorsed or certified by OMDb.</div>
 
+  <script src="js/tmdb.js"></script>
   <script>
-    // parse query: ?type=movie&id=12345 or ?url=<encoded URL>
+    // parse query: ?type=movie&id=tt12345&season=1&episode=2 or ?url=<encoded URL>
     function qs() { return Object.fromEntries(new URLSearchParams(location.search)); }
     const params = qs();
     const id = params.id || '';
@@ -22,26 +27,59 @@
     const episode = params.episode || params.ep || '';
     const explicit = params.url ? decodeURIComponent(params.url) : '';
     const frame = document.getElementById('playerFrame');
+    const infoEl = document.getElementById('playerInfo');
+    const titleEl = document.getElementById('playerTitle');
+    const overviewEl = document.getElementById('playerOverview');
 
     // Default embed (movie fallback)
     const defaultEmbed = 'https://www.vidking.net/embed/movie/1078605?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true';
 
-    // Build embed URL according to requested pattern:
-    // - Movie:  /embed/movie/{tmdbId}
-    // - TV:     /embed/tv/{tmdbId}/{season}/{episode}
-    if (explicit) {
-      frame.src = explicit;
-    } else if (type === 'movie' && id) {
-      frame.src = `https://www.vidking.net/embed/movie/${encodeURIComponent(id)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
-    } else if (type === 'tv' && id) {
-      const s = season || '1';
-      const ep = episode || '1';
-      frame.src = `https://www.vidking.net/embed/tv/${encodeURIComponent(id)}/${encodeURIComponent(s)}/${encodeURIComponent(ep)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
-    } else if (id) {
-      // If no type provided but id exists, assume movie
-      frame.src = `https://www.vidking.net/embed/movie/${encodeURIComponent(id)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
-    } else {
-      frame.src = defaultEmbed;
+    // helper to set info overlay
+    function showInfo(title, overview){
+      if (!title && !overview) return;
+      titleEl.textContent = title || '';
+      overviewEl.textContent = overview || '';
+      infoEl.hidden = false;
+    }
+
+    async function loadDetailsAndEmbed(){
+      // First, fetch OMDb details if possible
+      try{
+        if (type === 'tv' && id && season && episode && TMDB.getEpisode){
+          const ep = await TMDB.getEpisode(id, season, episode);
+          if (ep){
+            showInfo(ep.title || `${ep.series_id} S${ep.season}E${ep.episode}`, ep.overview || '');
+            document.title = ep.title || document.title;
+          }
+        } else if (id && TMDB.getById){
+          const md = await TMDB.getById(id);
+          if (md){
+            showInfo(md.title || md.name || '', md.overview || '');
+            document.title = md.title || md.name || document.title;
+          }
+        }
+      }catch(err){
+        // ignore fetch errors, still continue to set embed
+        console.warn('Details load failed', err);
+      }
+
+      // Build embed URL according to requested pattern:
+      // - Movie:  /embed/movie/{tmdbId}
+      // - TV:     /embed/tv/{tmdbId}/{season}/{episode}
+      if (explicit) {
+        frame.src = explicit;
+      } else if (type === 'movie' && id) {
+        frame.src = `https://www.vidking.net/embed/movie/${encodeURIComponent(id)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
+      } else if (type === 'tv' && id) {
+        const s = season || '1';
+        const ep = episode || '1';
+        frame.src = `https://www.vidking.net/embed/tv/${encodeURIComponent(id)}/${encodeURIComponent(s)}/${encodeURIComponent(ep)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
+      } else if (id) {
+        // If no type provided but id exists, assume movie
+        frame.src = `https://www.vidking.net/embed/movie/${encodeURIComponent(id)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
+      } else {
+        frame.src = defaultEmbed;
+      }
     }
 
     // When the iframe loads, attempt to open the player container in fullscreen.
@@ -70,6 +108,9 @@
         } else history.back();
       }
     });
+
+    // start
+    loadDetailsAndEmbed();
   </script>
 </body>
 </html>
