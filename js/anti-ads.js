@@ -140,6 +140,37 @@
       if (computed.position === 'static') container.style.position = 'relative';
       container.appendChild(overlay);
 
+      // Hide overlay while iframe (or its container) is in fullscreen so it
+      // doesn't cover the video surface (causing a black screen).
+      function onFullscreenChange() {
+        const fsEl = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement;
+        if (!fsEl) {
+          // Exited fullscreen — restore overlay if it was visible before
+          if (overlay._hiddenForFullscreen) {
+            overlay.style.display = overlay._previousDisplay || '';
+            overlay._hiddenForFullscreen = false;
+          }
+          return;
+        }
+
+        // If the fullscreen element is the iframe, the container, or contains the iframe,
+        // hide the overlay while fullscreen is active.
+        try {
+          if (fsEl === iframe || fsEl === container || fsEl.contains(iframe)) {
+            overlay._previousDisplay = overlay.style.display;
+            overlay.style.display = 'none';
+            overlay._hiddenForFullscreen = true;
+          }
+        } catch (e) {
+          // Defensive: some browsers may throw if fsEl is from a different realm
+        }
+      }
+
+      document.addEventListener('fullscreenchange', onFullscreenChange, false);
+      document.addEventListener('webkitfullscreenchange', onFullscreenChange, false);
+      document.addEventListener('mozfullscreenchange', onFullscreenChange, false);
+      document.addEventListener('MSFullscreenChange', onFullscreenChange, false);
+
       // Only enable pointer capture when "lockClicks" option is set
       if (opts && opts.lockClicks) {
         // When capturing clicks we need the overlay to sit above the iframe. We
@@ -162,6 +193,9 @@
         // store prevIframeZ so teardown can restore
         overlay._prevIframeZ = prevIframeZ;
       }
+
+      // store fullscreen listener so teardown can remove it
+      overlay._onFullscreenChange = onFullscreenChange;
     }
 
     return {
@@ -169,6 +203,15 @@
       teardown: function () {
         observer.disconnect();
         try { iframe.removeEventListener('load', () => {}); } catch (e) {}
+
+        // Remove fullscreen listeners
+        if (overlay && overlay._onFullscreenChange) {
+          document.removeEventListener('fullscreenchange', overlay._onFullscreenChange, false);
+          document.removeEventListener('webkitfullscreenchange', overlay._onFullscreenChange, false);
+          document.removeEventListener('mozfullscreenchange', overlay._onFullscreenChange, false);
+          document.removeEventListener('MSFullscreenChange', overlay._onFullscreenChange, false);
+        }
+
         if (overlay && overlay.parentElement) {
           // restore any modified z-index on iframe
           if (overlay._prevIframeZ !== undefined) {
