@@ -43,15 +43,16 @@ html, body {
 }
 
 .tab-btn {
-  background: none;
+  background: var(--text-secondary);
   border: none;
-  color: var(--text-secondary);
+  color: var(--dark-bg);
   font-size: 1rem;
   font-weight: 600;
-  padding: 0.5rem 0;
+  padding: 0.5rem 1rem;
   cursor: pointer;
   transition: all 0.3s ease;
   position: relative;
+  border-radius: 25px;
 }
 
 .tab-btn:hover {
@@ -75,7 +76,7 @@ html, body {
 
 .search-input {
   background: rgba(255,255,255,0.1) !important;
-  border: 1px solid rgba(255,255,255,0.2) !important;
+  border: 1px solid var(--primary) !important;
   color: var(--text-primary) !important;
   border-radius: 25px;
   padding: 0.5rem 1.5rem;
@@ -90,7 +91,7 @@ html, body {
 }
 
 .search-input::placeholder {
-  color: var(--text-muted);
+  color: var(--primary);
 }
 
 /* Hero Section */

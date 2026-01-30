@@ -1,2 +1,0 @@
-- [ ] Change movie-card-overlay background to gradient from black to transparent
-- [ ] Make overlay always visible (opacity: 1) instead of on hover
