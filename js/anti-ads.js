@@ -1,6 +1,5 @@
 /* js/anti-ads.js
  * Helper to reduce ads/popups for cross-origin embedded players.
- * - Enforces a restrictive sandbox (blocks popups)
  * - Normalizes the iframe "allow" attribute to only required features
  * - Detects ad/redirect-like URLs and blocks or sanitizes them
  * - Provides a small API for further checks
@@ -49,7 +48,6 @@
     const options = Object.assign({
       allowedHosts: ['vidking.net'],
       allowSameOrigin: false, // safer default
-      enforceSandbox: true,
       detectAdPatterns: true,
       onBlocked: function (reason, url) { console.warn('Blocked iframe navigation:', reason, url); }
     }, opts || {});
@@ -58,20 +56,7 @@
     const newAllow = sanitizeAllowAttr(iframe.getAttribute('allow')) || 'autoplay; fullscreen';
     iframe.setAttribute('allow', newAllow);
 
-    // Enforce sandboxing (no allow-popups / no allow-popups-to-escape-sandbox)
-    if (options.enforceSandbox) {
-      // Build a safe sandbox list. Do NOT include allow-popups or allow-popups-to-escape-sandbox.
-      const pieces = ['allow-scripts'];
-      if (options.allowSameOrigin) pieces.push('allow-same-origin');
-      // allow-forms may be needed for some players
-      pieces.push('allow-forms');
-      // allow-pointer-lock can be useful for fullscreen controls
-      pieces.push('allow-pointer-lock');
-      iframe.setAttribute('sandbox', pieces.join(' '));
-
-      // Also prevent the iframe from navigating the top-level browsing context
-      // by ensuring the sandbox does not include allow-top-navigation
-    }
+    // Sandbox enforcement removed — do not modify iframe sandbox attribute here.
 
     // Add a mutation observer to detect if src changes to a non-allowed host
     let lastSrc = iframe.src || iframe.getAttribute('src') || '';
@@ -125,7 +110,7 @@
     }, { passive: true });
 
     // Optionally add a translucent overlay that captures middle-clicks to avoid "open in new tab" if desired
-    // (the sandbox should already prevent popups, but overlay gives an extra layer).
+      // (the overlay gives an extra layer to capture clicks and avoid opening in a new tab).
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:absolute;left:0;top:0;right:0;bottom:0;pointer-events:none;';
     overlay.setAttribute('aria-hidden', 'true');
