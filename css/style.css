@@ -45,6 +45,7 @@ html, body {
 .tab-btn {
   background: none;
   border: none;
+  border-bottom: 3px solid transparent;
   color: var(--text-secondary);
   font-size: 1rem;
   font-weight: 600;
@@ -60,17 +61,7 @@ html, body {
 
 .tab-btn.active {
   color: var(--primary);
-}
-
-.tab-btn.active::after {
-  content: '';
-  position: absolute;
-  bottom: -8px;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: var(--primary);
-  border-radius: 2px;
+  border-bottom: 3px solid var(--primary);
 }
 
 .search-input {
