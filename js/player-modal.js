@@ -32,9 +32,9 @@ const PlayerModal = (function(){
       if (!frame) return;
       
       if (type === 'tv' && id) {
-        frame.src = `https://www.vidking.net/embed/tv/${encodeURIComponent(id)}/${encodeURIComponent(season)}/${encodeURIComponent(episode)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
+        frame.src = `https://www.vidking.net/embed/tv/${encodeURIComponent(id)}/${encodeURIComponent(season)}/${encodeURIComponent(episode)}?autoPlay=true&color=e50914&nextEpisode=true&episodeSelector=true`;
       } else if (type === 'movie' && id) {
-        frame.src = `https://www.vidking.net/embed/movie/${encodeURIComponent(id)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
+        frame.src = `https://www.vidking.net/embed/movie/${encodeURIComponent(id)}?autoPlay=true&color=e50914`;
       }
 
       // Request fullscreen after iframe loads
