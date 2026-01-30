@@ -40,6 +40,7 @@
 })();
 </script>
   <script src="js/tmdb.js"></script>
+  <script src="js/anti-ads.js"></script>
   <script>
     // Parse query parameters: ?type=movie&id=123 or ?movie/123 (slash-separated)
     let type = '';
@@ -67,6 +68,9 @@
     }
 
     const frame = document.getElementById('playerFrame');
+    if (typeof blockPlayerAds === 'function') {
+      blockPlayerAds(frame, { allowedHosts: ['vidking.net','www.vidking.net'], allowSameOrigin: false });
+    }
     const infoEl = document.getElementById('playerInfo');
     const titleEl = document.getElementById('playerTitle');
     const overviewEl = document.getElementById('playerOverview');
