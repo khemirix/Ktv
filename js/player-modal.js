@@ -1,8 +1,13 @@
 /* player-modal.js - Handles loading the player in a Bootstrap modal */
 
 const PlayerModal = (function(){
-  const modal = new bootstrap.Modal(document.getElementById('playerModal'), { backdrop: false, keyboard: true });
+  const modal = new bootstrap.Modal(document.getElementById('playerModal'), { 
+    backdrop: false, 
+    keyboard: true,
+    scroll: false
+  });
   const frame = document.getElementById('playerFrame');
+  const modalEl = document.getElementById('playerModal');
 
   function requestFullscreen(el) {
     if (!el) return;
@@ -22,11 +27,11 @@ const PlayerModal = (function(){
         frame.src = `https://www.vidking.net/embed/movie/${encodeURIComponent(id)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
       }
 
-      // Request fullscreen when iframe loads
-      frame.addEventListener('load', () => {
+      // Request fullscreen after a short delay to ensure iframe is loaded
+      setTimeout(() => {
         requestFullscreen(frame);
         try { frame.contentWindow && frame.contentWindow.focus(); } catch (e) {}
-      }, { once: true });
+      }, 500);
       
     } catch (err) {
       console.warn('Failed to load player:', err);
@@ -35,11 +40,15 @@ const PlayerModal = (function(){
 
   return {
     show: function(type, id, season, episode) {
+      // Disable body scroll when modal is shown
+      document.body.style.overflow = 'hidden';
       loadPlayerDetails(type, id, season, episode);
       modal.show();
     },
     hide: function() {
       modal.hide();
+      // Re-enable body scroll
+      document.body.style.overflow = '';
       frame.src = 'about:blank';
       if (document.fullscreenElement) {
         const exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;

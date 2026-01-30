@@ -26,11 +26,11 @@
   <footer class="attribution">Khemirix Movies 2026</footer>
 
   <!-- Player Modal -->
-  <div class="modal fade" id="playerModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-fullscreen">
-      <div class="modal-content bg-dark border-0">
-        <div class="modal-body p-0" style="height: 100vh;">
-          <iframe id="playerFrame" src="about:blank" style="width:100%;height:100%;border:none;" allow="autoplay; fullscreen; encrypted-media"></iframe>
+  <div class="modal fade" id="playerModal" tabindex="-1" aria-hidden="true" data-bs-scroll="false">
+    <div class="modal-dialog modal-fullscreen" style="margin:0;max-width:100%">
+      <div class="modal-content" style="height:100vh;background:#000;border:none;margin:0;padding:0">
+        <div class="modal-body" style="padding:0;height:100vh;margin:0">
+          <iframe id="playerFrame" src="about:blank" style="width:100%;height:100%;border:none;display:block" allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
         </div>
       </div>
     </div>
