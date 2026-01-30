@@ -381,18 +381,32 @@ const FocusNav = (function() {
     state.rowIndex = 0;
     state.colIndex = 0;
 
-    // Make cards focusable
-    state.rows.forEach(row => {
-      getCardsInRow(state.rows.indexOf(row)).forEach((card, idx) => {
+    // Make cards focusable and add mouse support
+    state.rows.forEach((row, rowIdx) => {
+      getCardsInRow(rowIdx).forEach((card, colIdx) => {
         card.setAttribute('tabindex', '-1');
         card.setAttribute('role', 'button');
-        card.setAttribute('aria-label', `${card.textContent || 'Item'} ${idx + 1}`);
+        card.setAttribute('aria-label', `${card.textContent || 'Item'} ${colIdx + 1}`);
+
+        // TV Mouse support: hover to focus, click to activate
+        card.addEventListener('mouseenter', () => {
+          state.rowIndex = rowIdx;
+          state.colIndex = colIdx;
+          updateFocusDisplay();
+        });
+
+        card.addEventListener('click', (e) => {
+          state.rowIndex = rowIdx;
+          state.colIndex = colIdx;
+          updateFocusDisplay();
+          // Let the existing click handler in app.js handle the actual activation
+        });
       });
     });
 
     // Apply initial focus
     updateFocusDisplay();
-    console.log(`FocusNav: Registered ${state.rows.length} rows`);
+    console.log(`FocusNav: Registered ${state.rows.length} rows with mouse support`);
   }
 
   /**
