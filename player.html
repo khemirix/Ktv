@@ -8,22 +8,67 @@
 </head>
 <body class="player-page">
   <div class="player-shell">
-    <iframe id="playerFrame" src="about:blank" frameborder="0" allowfullscreen></iframe>
+    <iframe id="playerFrame" src="about:blank" frameborder="0" allowfullscreen allow="autoplay; fullscreen"></iframe>
   </div>
   <div class="player-footer">Press Back to return • This product uses the OMDb API but is not endorsed or certified by OMDb.</div>
 
   <script>
-    // parse query: ?type=movie&id=12345
+    // parse query: ?type=movie&id=12345 or ?url=<encoded URL>
     function qs() { return Object.fromEntries(new URLSearchParams(location.search)); }
     const params = qs();
     const id = params.id || '';
-    // Player iframe points to the requested URL pattern
+    const type = params.type || '';
+    const season = params.season || params.s || '';
+    const episode = params.episode || params.ep || '';
+    const explicit = params.url ? decodeURIComponent(params.url) : '';
     const frame = document.getElementById('playerFrame');
-    if (id) frame.src = `https://mywebsite.com/${id}`;
 
-    // Backspace/Escape go back
-    window.addEventListener('keydown', (e)=>{
-      if (e.key === 'Backspace' || e.key === 'Escape') history.back();
+    // Default embed (movie fallback)
+    const defaultEmbed = 'https://www.vidking.net/embed/movie/1078605?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true';
+
+    // Build embed URL according to requested pattern:
+    // - Movie:  /embed/movie/{tmdbId}
+    // - TV:     /embed/tv/{tmdbId}/{season}/{episode}
+    if (explicit) {
+      frame.src = explicit;
+    } else if (type === 'movie' && id) {
+      frame.src = `https://www.vidking.net/embed/movie/${encodeURIComponent(id)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
+    } else if (type === 'tv' && id) {
+      const s = season || '1';
+      const ep = episode || '1';
+      frame.src = `https://www.vidking.net/embed/tv/${encodeURIComponent(id)}/${encodeURIComponent(s)}/${encodeURIComponent(ep)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
+    } else if (id) {
+      // If no type provided but id exists, assume movie
+      frame.src = `https://www.vidking.net/embed/movie/${encodeURIComponent(id)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
+    } else {
+      frame.src = defaultEmbed;
+    }
+
+    // When the iframe loads, attempt to open the player container in fullscreen.
+    function openFullscreen(el){
+      if (!el) return;
+      const request = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+      if (request) {
+        request.call(el).catch(()=>{});
+      }
+    }
+
+    frame.addEventListener('load', ()=>{
+      // Try to fullscreen the container so the iframe becomes fullscreen
+      const shell = document.querySelector('.player-shell');
+      openFullscreen(shell);
+      // try focusing iframe for remote/keyboard
+      try { frame.contentWindow && frame.contentWindow.focus(); } catch(e){}
+    });
+
+    // Backspace/Escape: exit fullscreen if active, otherwise go back
+    window.addEventListener('keydown', async (e)=>{
+      if (e.key === 'Backspace' || e.key === 'Escape'){
+        if (document.fullscreenElement) {
+          const exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
+          if (exit) await exit.call(document).catch(()=>{});
+        } else history.back();
+      }
     });
   </script>
 </body>
