@@ -32,9 +32,9 @@ const PlayerModal = (function(){
       if (!frame) return;
       
       if (type === 'tv' && id) {
-        frame.src = `https://player.videasy.net/tv/${encodeURIComponent(id)}/${encodeURIComponent(season)}/${encodeURIComponent(episode)}?overlay=true&autoPlay=true&color=e50914&nextEpisode=true&episodeSelector=true`;
+        frame.src = `https://player.videasy.net/tv/${encodeURIComponent(id)}/${encodeURIComponent(season)}/${encodeURIComponent(episode)}?overlay=true&Play=true&color=e50914&nextEpisode=true&episodeSelector=true`;
       } else if (type === 'movie' && id) {
-        frame.src = `https://player.videasy.net/movie/${encodeURIComponent(id)}?overlay=true&autoPlay=true&color=e50914`;
+        frame.src = `https://player.videasy.net/movie/${encodeURIComponent(id)}?overlay=true&Play=true&color=e50914`;
       }
 
       // Request fullscreen after iframe loads
