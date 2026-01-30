@@ -19,16 +19,30 @@
 
   <script src="js/tmdb.js"></script>
   <script>
-    // Parse slash-separated query: ?movie/tt12345 or ?tv/tt12345/1/2
-    let raw = location.search || '';
-    if (raw.startsWith('?')) raw = raw.slice(1);
-    if (!raw && location.hash && location.hash.startsWith('#')) raw = location.hash.slice(1);
-    const parts = raw.split('/').filter(Boolean);
+    // Parse query parameters: ?type=movie&id=123 or ?movie/123 (slash-separated)
+    let type = '';
+    let id = '';
+    let season = '1';
+    let episode = '1';
 
-    const type = parts[0] || '';
-    const id = parts[1] || '';
-    const season = parts[2] || '1';
-    const episode = parts[3] || '1';
+    // Try query parameter format first (?type=movie&id=123)
+    const params = new URLSearchParams(location.search);
+    if (params.has('type') && params.has('id')) {
+      type = params.get('type') || '';
+      id = params.get('id') || '';
+      season = params.get('season') || '1';
+      episode = params.get('episode') || '1';
+    } else {
+      // Fall back to slash-separated format (?movie/123 or #movie/123)
+      let raw = location.search || '';
+      if (raw.startsWith('?')) raw = raw.slice(1);
+      if (!raw && location.hash && location.hash.startsWith('#')) raw = location.hash.slice(1);
+      const parts = raw.split('/').filter(Boolean);
+      type = parts[0] || '';
+      id = parts[1] || '';
+      season = parts[2] || '1';
+      episode = parts[3] || '1';
+    }
 
     const frame = document.getElementById('playerFrame');
     const infoEl = document.getElementById('playerInfo');
