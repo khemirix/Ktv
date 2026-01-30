@@ -138,6 +138,10 @@
     
     if (tab === 'movies') await loadMovies();
     else if (tab === 'tv') await loadTV();
+    
+    // Re-attach listeners after new content is loaded
+    attachCardListeners();
+    registerFocusNavigation();
   }
 
   // ============================================================================
@@ -159,16 +163,28 @@
   }
 
   /**
-   * Attach click handlers to movie cards
+   * Attach click handlers to movie cards using event delegation
    */
   function attachCardListeners() {
-    document.querySelectorAll('.movie-card').forEach(card => {
-      card.addEventListener('click', () => {
+    // Use event delegation on the main content container
+    // Remove any previous delegated listener by using a named function
+    if (mainContent._clickHandler) {
+      mainContent.removeEventListener('click', mainContent._clickHandler);
+    }
+    
+    mainContent._clickHandler = function(e) {
+      const card = e.target.closest('.movie-card');
+      if (card) {
         const type = card.dataset.type;
         const id = card.dataset.id;
-        PlayerModal.show(type, id);
-      });
-    });
+        if (type && id) {
+          console.log(`Opening: ${type} ${id}`);
+          PlayerModal.show(type, id);
+        }
+      }
+    };
+    
+    mainContent.addEventListener('click', mainContent._clickHandler);
   }
 
   // ============================================================================
