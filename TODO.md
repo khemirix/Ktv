@@ -1,3 +1,2 @@
-- [x] Change nav class from sticky-top to fixed-top in index.html
-- [x] Update .navbar background to rgba(0,0,0,0.1) and backdrop-filter to blur(20px) in css/style.css
-- [x] Add padding-top: 80px to .content-container in css/style.css
+- [x] Make navbar background more transparent (rgba(0,0,0,0.05))
+- [x] Restructure navbar HTML to put brand, tabs, and search on the same line, with tabs and search on the right
