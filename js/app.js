@@ -9,7 +9,7 @@
   function createMovieCard(item, type) {
     const year = item.release_date ? item.release_date.split('-')[0] : item.first_air_date ? item.first_air_date.split('-')[0] : 'N/A';
     return `
-      <div class="movie-card" data-id="${item.id}" data-type="${type}" onclick="PlayerModal.show('${type}', '${item.id}')">
+      <div class="movie-card"  tabindex="0" data-id="${item.id}" data-type="${type}" onclick="PlayerModal.show('${type}', '${item.id}')">
         <img src="${item.poster_path ? TMDB.IMG + item.poster_path : 'https://via.placeholder.com/200x300?text=No+Image'}" alt="${item.title || item.name}">
         <div class="movie-card-overlay">
           <div class="movie-card-title">${item.title || item.name}</div>
