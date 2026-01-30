@@ -13,6 +13,7 @@
   <div class="player-info" id="playerInfo" aria-live="polite" hidden>
     <h1 id="playerTitle">Loading…</h1>
     <p id="playerOverview"></p>
+    <p style="margin-top:8px;font-size:13px;color:var(--muted)">Link: <a id="playerLink" href="#" target="_blank" rel="noopener noreferrer">-</a></p>
   </div>
   <div class="player-footer">Press Back to return • This product uses the OMDb API but is not endorsed or certified by OMDb.</div>
 
@@ -63,6 +64,9 @@
           }
           // Build TV embed URL: /embed/tv/id/season/episode
           frame.src = `https://www.vidking.net/embed/tv/${encodeURIComponent(id)}/${encodeURIComponent(season)}/${encodeURIComponent(episode)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
+          // show full link
+          const linkEl = document.getElementById('playerLink');
+          if (linkEl) { linkEl.href = frame.src; linkEl.textContent = frame.src; }
         } else if (type === 'movie' && id && TMDB.getById) {
           // Fetch movie details
           const movie = await TMDB.getById(id);
@@ -72,6 +76,9 @@
           }
           // Build movie embed URL: /embed/movie/id
           frame.src = `https://www.vidking.net/embed/movie/${encodeURIComponent(id)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
+          // show full link
+          const linkEl = document.getElementById('playerLink');
+          if (linkEl) { linkEl.href = frame.src; linkEl.textContent = frame.src; }
           
           // For movies, request fullscreen when iframe loads
           frame.addEventListener('load', () => {
