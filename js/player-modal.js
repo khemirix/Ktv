@@ -24,13 +24,10 @@ const PlayerModal = (function(){
       
       if (type === 'tv' && id) {
         // Ensure the iframe can enter fullscreen manually via user interaction
-        frame.setAttribute('allow', (frame.getAttribute('allow') || '') + ' fullscreen; autoplay');
-        frame.setAttribute('allowfullscreen', '');
+        
         frame.src = `https://player.videasy.net/tv/${encodeURIComponent(id)}/${encodeURIComponent(season)}/${encodeURIComponent(episode)}?overlay=true&Play=true&color=e50914&nextEpisode=true&episodeSelector=true`;
       } else if (type === 'movie' && id) {
-        // Ensure the iframe can enter fullscreen manually via user interaction
-        frame.setAttribute('allow', (frame.getAttribute('allow') || '') + ' fullscreen; autoplay');
-        frame.setAttribute('allowfullscreen', '');
+      
         frame.src = `https://player.videasy.net/movie/${encodeURIComponent(id)}?overlay=true&Play=true&color=e50914`;
       }
 
