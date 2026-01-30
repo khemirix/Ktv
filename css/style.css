@@ -9,6 +9,15 @@
   --text-muted: #808080;
 }
 
+/* TV Remote Cursor Hiding */
+body {
+  cursor: none;
+}
+
+body.mouse-active {
+  cursor: auto;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;

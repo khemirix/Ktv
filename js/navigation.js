@@ -258,7 +258,13 @@ const FocusNav = (function() {
   function activateFocused() {
     const card = getFocusedCard();
     if (card) {
-      card.click();
+      // Trigger the click event directly on the card
+      const clickEvent = new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        view: window
+      });
+      card.dispatchEvent(clickEvent);
     }
   }
 
@@ -344,6 +350,16 @@ const FocusNav = (function() {
 
     // Register keyboard handler
     window.addEventListener('keydown', handleKeyDown);
+
+    // Mouse detection for TV remote mode
+    let mouseTimeout;
+    window.addEventListener('mousemove', () => {
+      document.body.classList.add('mouse-active');
+      clearTimeout(mouseTimeout);
+      mouseTimeout = setTimeout(() => {
+        document.body.classList.remove('mouse-active');
+      }, 3000);
+    });
 
     state.isInitialized = true;
     console.log('FocusNav: Navigation system initialized');
