@@ -1,7 +1,7 @@
 // TMDB v3 client wrapper (keeps the `TMDB` global for compatibility with the app)
 const TMDB = (function(){
   // Use the provided TMDB API key
-  const API_KEY = '8baba8ab6b8bbe247645bcae7df63d0';
+  const API_KEY = '480d4cc2b31147cee62508f27a445cf2';
   const BASE = 'https://api.themoviedb.org/3';
   // Image base used by the UI when concatenated with poster_path
   const IMG = 'https://image.tmdb.org/t/p/w500';
