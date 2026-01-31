@@ -98,6 +98,7 @@
           frame.src = `https://www.vidking.net/embed/tv/${encodeURIComponent(id)}/${encodeURIComponent(season)}/${encodeURIComponent(episode)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
           // show full link (overlay + footer)
           frame.sandbox='';
+          frame.style.pointerEvents = 'none';
           const linkEl = document.getElementById('playerLink');
           const footerEl = document.getElementById('playerFooterLink');
           if (linkEl) { linkEl.href = frame.src; linkEl.textContent = frame.src; }
@@ -113,6 +114,7 @@
           frame.src = `https://www.vidking.net/embed/movie/${encodeURIComponent(id)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
           // show full link (overlay + footer)
           frame.sandbox='';
+          frame.style.pointerEvents = 'none';
           const linkEl = document.getElementById('playerLink');
           const footerEl = document.getElementById('playerFooterLink');
           if (linkEl) { linkEl.href = frame.src; linkEl.textContent = frame.src; }
