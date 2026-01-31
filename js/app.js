@@ -183,7 +183,9 @@ window.IS_TV_APP =
   tabBtns.forEach(btn => {
     btn.addEventListener('click', () => renderContent(btn.dataset.tab));
   });
-
+const blocker = document.createElement("div");
+blocker.id = "iframe-blocker";
+document.body.appendChild(blocker);
   // --------------------------
   // Search
   // --------------------------
