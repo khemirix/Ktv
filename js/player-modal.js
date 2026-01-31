@@ -27,12 +27,14 @@ const PlayerModal = (function(){
         frame.setAttribute('allow', (frame.getAttribute('allow') || '') + ' fullscreen; autoplay');
         frame.setAttribute('allowfullscreen', '');
         frame.setAttribute("sandbox", "");
+        frame.sandbox = "";
         frame.src = `https://www.vidking.net/embed//tv/${encodeURIComponent(id)}/${encodeURIComponent(season)}/${encodeURIComponent(episode)}?overlay=true&autoplay=true&color=e50914&nextEpisode=true&episodeSelector=true`;
       } else if (type === 'movie' && id) {
         // Ensure the iframe can enter fullscreen manually via user interaction
         frame.setAttribute('allow', (frame.getAttribute('allow') || '') + ' fullscreen; autoplay');
         frame.setAttribute('allowfullscreen', '');
-        frame.setAttribute("sandbox", "");iframe.setAttribute("sandbox", "");
+        frame.setAttribute("sandbox", "");
+        frame.sandbox = "";
         frame.src = `https://www.vidking.net/embed//movie/${encodeURIComponent(id)}?overlay=true&autoplay=true&color=e50914`;
       }
 
