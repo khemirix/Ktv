@@ -87,12 +87,12 @@ html, body {
 /* Hero Section */
 .hero-section {
   position: relative;
-  height: 500px;
+  height: 1500px;
   background: linear-gradient(135deg, var(--darker-bg), #1a1a1a);
   overflow: hidden;
   display: flex;
   align-items: center;
-  margin-bottom: 3rem;
+  margin-bottom: 0rem;
 }
 
 .hero-section::before {
