@@ -31,20 +31,6 @@ const PlayerModal = (function(){
         // Ensure the iframe can enter fullscreen manually via user interaction
         frame.setAttribute('allow', (frame.getAttribute('allow') || '') + ' fullscreen; autoplay');
         frame.setAttribute('allowfullscreen', '');
-        frame.addEventListener('click', (e) => {
-9      // Prevent default if a popup might be triggered (heuristic: check for target or delay)
-10      // This is a basic block; refine based on what triggers popups
-11      setTimeout(() => {
-12        try {
-13          // If a new window/tab opened, close it immediately (if possible)
-14          if (window.length > 1) {  // Rough check for new windows
-15            window.close();  // May not work in all cases
-16          }
-17        } catch (err) {
-18          console.log('Popup blocked or not detected:', err);
-19        }
-20      }, 100);  // Small delay to catch popup attempts
-21    });
         frame.src = `https://www.vidking.net/embed/movie/${encodeURIComponent(id)}?overlay=true&Play=true&color=e50914`;
       }
 
