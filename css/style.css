@@ -87,7 +87,7 @@ html, body {
 /* Hero Section */
 .hero-section {
   position: relative;
-  height: 700px;
+  height: 100px;
   background: linear-gradient(135deg, var(--darker-bg), #1a1a1a);
   overflow: hidden;
   display: flex;
