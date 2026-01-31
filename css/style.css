@@ -86,13 +86,17 @@ html, body {
 
 /* Hero Section */
 .hero-section {
-  position: relative;
-  height: 500px;
-  background: linear-gradient(135deg, var(--darker-bg), #1a1a1a);
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  margin-bottom: 3rem;
+  height: 85vh; /* Make it taller like Cineby */
+    display: flex;
+    align-items: center;
+    position: relative;
+    overflow: hidden;
+    background-size: cover;
+    background-position: center;
+    /* This adds the dark cinematic fade */
+    background-image: 
+        linear-gradient(to right, rgba(0, 0, 0, 0.9) 10%, rgba(0, 0, 0, 0.2) 50%, rgba(0, 0, 0, 0.9) 100%),
+        linear-gradient(to top, #0c0d14 0%, transparent 50%); 
 }
 
 .hero-section::before {
