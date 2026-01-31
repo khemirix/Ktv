@@ -30,17 +30,8 @@
     <p style="margin-top:8px;font-size:13px;color:var(--muted)">Link: <a id="playerLink" href="#" target="_blank" rel="noopener noreferrer">-</a></p>
   </div>
   <div class="player-footer">Press Back to return • This product uses the OMDb API but is not endorsed or certified by OMDb. <a id="playerFooterLink" href="#" target="_blank" rel="noopener noreferrer" style="color:var(--muted);font-size:13px;word-break:break-all;margin-left:8px">-</a></div>
-  <script>(function () {
-  const originalOpen = window.open;
-
-  window.open = function () {
-    console.warn('Popup blocked:', arguments);
-    return null;
-  };
-})();
-</script>
   <script src="js/tmdb.js"></script>
-  <script src="js/anti-ads.js"></script>
+  <script src=""></script>
   <script>
     // Parse query parameters: ?type=movie&id=123 or ?movie/123 (slash-separated)
     let type = '';
