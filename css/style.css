@@ -121,28 +121,28 @@ html, body {
 .hero-content {
   position: relative;
   z-index: 3;
-  padding: 3rem;
+  padding: 1rem;
   max-width: 600px;
 }
 
 .hero-content h1 {
   font-size: 3.5rem;
   font-weight: 800;
-  margin-bottom: 1rem;
+  margin-bottom: 0rem;
   line-height: 1.1;
 }
 
 .hero-content p {
   font-size: 1.3rem;
   color: var(--text-secondary);
-  margin-bottom: 2rem;
+  margin-bottom: 0.5rem;
 }
 
 .hero-content .btn {
   background: var(--primary);
   border: none;
   border-radius: 8px;
-  padding: 0.8rem 0rem;
+  padding: 0.8rem 2.5rem;
   font-size: 1.1rem;
   font-weight: 600;
   transition: all 0.3s ease;
