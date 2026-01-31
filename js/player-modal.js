@@ -32,7 +32,7 @@ const PlayerModal = (function(){
         frame.setAttribute('allow', (frame.getAttribute('allow') || '') + ' fullscreen; autoplay');
         frame.setAttribute('allowfullscreen', '');
         frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-fullscreen");
-11      frame.style.pointerEvents='none';
+        frame.style.pointerEvents='none';
         frame.src = `https://www.vidking.net/embed/movie/${encodeURIComponent(id)}?overlay=true&Play=true&color=e50914`;
       }
 
