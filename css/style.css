@@ -86,21 +86,12 @@ html, body {
 
 /* Hero Section */
 .hero-section {
-  height: 85vh; /* Make it taller like Cineby */
-    display: flex;
-    align-items: center;
-    position: relative;
+position: relative;
+    height: 85vh; /* Increase height for that cinematic feel */
+    width: 100%;
     overflow: hidden;
-    background-size: cover;
-    background-position: center;
-    /* This adds the dark cinematic fade */
-    background-image: 
-        linear-gradient(to right, rgba(0, 0, 0, 0.9) 10%, rgba(0, 0, 0, 0.2) 50%, rgba(0, 0, 0, 0.9) 100%),
-        linear-gradient(to top, #0c0d14 0%, transparent 50%); 
-}
-.hero img {
-    display: none; 
-}
+    display: flex;
+    align-items: center; /* Centers text vertically */}
 .hero-section::before {
   content: '';
   position: absolute;
@@ -113,16 +104,13 @@ html, body {
 }
 
 .hero-image {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 60%;
-  height: 100%;
-  background-size: cover;
-  background-position: center;
-  filter: brightness(0.6);
-  z-index: 1;
-}
+position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* This is the magic: it fills the space without stretching */
+    z-index: -2; /* Puts it behind everything */}
 
 .hero-content {
   position: relative;
