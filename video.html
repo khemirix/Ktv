@@ -1,13 +1,18 @@
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
 
-<video id="video"></video>
+<video id="video" controls autoplay></video>
+
 <script>
-  const stream = "https://i-cdn-0.vekna402las.com/stream2/i-cdn-0/9ad0dafe62fceec691a209cf1bdc6035/MJTMsp1RshGTygnMNRUR2N2MSlnWXZEdMNDZzQWe5MDZzMmdZJTO1R2RWVHZDljekhkSsl1VwYnWtx2cihVT25kaSlmWEdGMOpXQy4EVFhXWql1MOJjUo5kerlnWXpUbOpWQ39ERk12THVUP:1769954029:173.46.80.144:0bc1f7b6d1f0011b7c82ac11554c598fa9145995d84655fcb55a7981f612778c:=0EVjpHTqFlMMp2Z3xkaFBjTB1TP/index.m3u8"; // add your stream here
+  const stream = "https://i-cdn-0.vekna402las.com/stream2/i-cdn-0/9ad0dafe62fceec691a209cf1bdc6035/MJTMsp1RshGTygnMNRUR2N2MSlnWXZEdMNDZzQWe5MDZzMmdZJTO1R2RWVHZDljekhkSsl1VwYnWtx2cihVT25kaSlmWEdGMOpXQy4EVFhXWql1MOJjUo5kerlnWXpUbOpWQ39ERk12THVUP:1769954029:173.46.80.144:0bc1f7b6d1f0011b7c82ac11554c598fa9145995d84655fcb55a7981f612778c:=0EVjpHTqFlMMp2Z3xkaFBjTB1TP/index.m3u8";
+
+  const video = document.getElementById('video');
 
   if (Hls.isSupported()) {
-    var video = document.getElementById('video');
-    var hls = new Hls();
-    hls.loadSource(stream.playlist);
+    const hls = new Hls();
+    hls.loadSource(stream); // ✅ هنا التعديل
     hls.attachMedia(video);
+  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    // Safari / iOS
+    video.src = stream;
   }
 </script>
