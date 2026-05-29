@@ -277,7 +277,7 @@ html, body {
   position: relative;
 
   width: 100vw;
-  height: 120vh;
+  height: 150vh;
 
   margin: 0;
   padding: 0;
@@ -286,7 +286,7 @@ html, body {
   background-position: center;
   background-repeat: no-repeat;
 
-  
+  overflow: hidden;
 }
 
 /* DARK OVERLAY */
