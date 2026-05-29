@@ -7,36 +7,135 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="css/style.css">
-  <script>const isTizen =
-  navigator.userAgent.includes("Tizen") ||
-  navigator.userAgent.includes("SMART-TV");
+  <style>
+    /* ── Player Modal ─────────────────────────────────────── */
+    #playerModal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: rgba(0,0,0,0.95);
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+    #playerModal.active { display: flex; }
 
-if (isTizen) {
-  document.body.classList.add("tv-mode");
-}
-</script>
+    #playerClose {
+      position: absolute;
+      top: 1rem; right: 1.2rem;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: #fff;
+      border-radius: 50%;
+      width: 38px; height: 38px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.2s;
+      z-index: 10;
+    }
+    #playerClose:hover { background: rgba(255,255,255,0.18); }
+
+    /* Loading state */
+    #playerStateLoading {
+      text-align: center;
+      color: #fff;
+    }
+    .player-spinner {
+      width: 48px; height: 48px;
+      border: 4px solid rgba(255,255,255,0.15);
+      border-top-color: #e50914;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 1.2rem;
+    }
+    #playerLoadingTitle {
+      font-size: 1rem;
+      color: rgba(255,255,255,0.6);
+      font-family: sans-serif;
+    }
+
+    /* Video state */
+    #playerStateVideo {
+      width: 100%;
+      max-width: 1100px;
+      padding: 0 1rem;
+    }
+    #playerTitle {
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.6rem;
+      font-family: sans-serif;
+      padding-left: 2px;
+    }
+    #playerVideo {
+      width: 100%;
+      aspect-ratio: 16/9;
+      border-radius: 10px;
+      background: #000;
+      display: block;
+    }
+    #qualityList {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.8rem;
+    }
+    .quality-btn {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: rgba(255,255,255,0.7);
+      border-radius: 6px;
+      padding: 0.3rem 0.8rem;
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .quality-btn:hover { background: rgba(255,255,255,0.14); color: #fff; }
+    .quality-btn.active { background: #e50914; border-color: #e50914; color: #fff; }
+
+    /* Error state */
+    #playerStateError {
+      text-align: center;
+      color: #fff;
+      font-family: sans-serif;
+    }
+    .error-icon { font-size: 2.5rem; margin-bottom: 0.8rem; }
+    #playerErrorMsg {
+      color: rgba(255,255,255,0.55);
+      font-size: 0.9rem;
+      margin-top: 0.4rem;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
 </head>
 <body>
+
   <!-- Navigation -->
   <nav class="navbar navbar-dark bg-dark fixed-top">
     <div class="container-fluid d-flex justify-content-between align-items-center">
       <span class="navbar-brand mb-0 h1">
-        <i class="fas fa-film"></i> <img src="./css/img/Khemirix.png" alt="" width="50%">
+        <i class="fas fa-film"></i>
+        <img src="./css/img/Khemirix.png" alt="" width="50%">
       </span>
       <div class="d-flex gap-3 align-items-center">
         <div class="nav-tabs-custom">
           <button class="tab-btn active" data-tab="movies" tabindex="0">Movies</button>
           <button class="tab-btn" data-tab="tv" tabindex="0">TV Shows</button>
         </div>
-        <input type="text" id="searchInput" class="form-control form-control-sm search-input" placeholder="Search movies, shows..." aria-label="Search" tabindex="0">
+        <input type="text" id="searchInput" class="form-control form-control-sm search-input"
+          placeholder="Search movies, shows…" aria-label="Search" tabindex="0">
       </div>
     </div>
   </nav>
 
-  <!-- Hero Section -->
+  <!-- Hero -->
   <div id="heroSection" class="hero-section">
     <div class="hero-content">
-      <h1 id="heroTitle">Welcome to khemirix TV </h1>
+      <h1 id="heroTitle">Welcome to Khemirix TV</h1>
       <p id="heroDescription">Stream unlimited movies and TV shows</p>
       <button id="heroPlayBtn" class="btn btn-primary btn-lg" tabindex="0">
         <i class="fas fa-play"></i> Watch Now
@@ -45,29 +144,40 @@ if (isTizen) {
     <div id="heroImage" class="hero-image"></div>
   </div>
 
-  <!-- Content Grid -->
+  <!-- Content -->
   <div class="container-fluid content-container">
-    <div id="mainContent">
-      <!-- Sections will be injected here -->
-    </div>
+    <div id="mainContent"></div>
   </div>
 
   <!-- Player Modal -->
-  <div class="modal fade" id="playerModal" tabindex="-1" aria-hidden="true" data-bs-scroll="false">
-    <div class="modal-dialog modal-fullscreen" style="margin:0;max-width:100%">
-      <div class="modal-content" style="height:100vh;background:#000;border:none;margin:0;padding:0">
-        <div class="modal-body" style="padding:0;height:100vh;margin:0">
-          <iframe id="playerFrame" src="about:blank" style="width:100%;height:100%;border:none;display:block" allow="autoplay; fullscreen; picture-in-picture" autoplay></iframe>
-        </div>
-      </div>
+  <div id="playerModal" role="dialog" aria-modal="true" aria-label="Video Player">
+    <button id="playerClose" aria-label="Close player">✕</button>
+
+    <!-- Loading -->
+    <div id="playerStateLoading">
+      <div class="player-spinner"></div>
+      <div id="playerLoadingTitle">Resolving…</div>
+    </div>
+
+    <!-- Video -->
+    <div id="playerStateVideo" hidden>
+      <div id="playerTitle"></div>
+      <video id="playerVideo" controls playsinline></video>
+      <div id="qualityList"></div>
+    </div>
+
+    <!-- Error / Not Found -->
+    <div id="playerStateError" hidden>
+      <div class="error-icon">🎬</div>
+      <div style="font-size:1.2rem;font-weight:700;">Not Found</div>
+      <div id="playerErrorMsg"></div>
     </div>
   </div>
 
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="js/tmdb.js"></script>
-  <script src="js/player-modal.js"></script>
+  <script src="js/resolver.js"></script>
   <script src="js/app.js"></script>
-
 </body>
 </html>
