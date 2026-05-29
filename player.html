@@ -2,4 +2,64 @@
 <html>
     test test
 </html>
-<script src="./js/movie-resolver.js"></script>
+<script>(async function () {
+  const API_BASE = "https://showbox-api-1.onrender.com";
+
+  // get params from URL
+  const params = new URLSearchParams(window.location.search);
+  const movieName = params.get("movie_name");
+  const year = params.get("year");
+
+  if (!movieName) {
+    document.body.innerHTML = "Missing movie_name";
+    return;
+  }
+
+  try {
+    // 1. search movie
+    const searchRes = await fetch(
+      `${API_BASE}/search?query=${encodeURIComponent(movieName)}`
+    );
+    const searchData = await searchRes.json();
+
+    if (!searchData?.results?.length) {
+      document.body.innerHTML = "No movie found";
+      return;
+    }
+
+    let movie = searchData.results[0];
+
+    // optional year filter (if exists)
+    if (year) {
+      const byYear = searchData.results.find(m => String(m.year) === String(year));
+      if (byYear) movie = byYear;
+    }
+
+    // 2. get files
+    const filesRes = await fetch(
+      `${API_BASE}/files?id=${movie.id}`
+    );
+    const filesData = await filesRes.json();
+
+    const link =
+      filesData?.files?.[0]?.url ||
+      filesData?.files?.[0]?.link ||
+      null;
+
+    // 3. OUTPUT ONLY LINK
+    if (!link) {
+      document.body.innerHTML = "No stream link found";
+      return;
+    }
+
+    // clean output (only link)
+    document.body.innerHTML = link;
+
+    // optional: also expose it globally
+    window.MOVIE_LINK = link;
+
+  } catch (err) {
+    document.body.innerHTML = "Error loading movie";
+    console.error(err);
+  }
+})();</script>
