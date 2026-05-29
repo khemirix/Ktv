@@ -1,11 +1,14 @@
 <!DOCTYPE html>
 <html>
-    test test 2
+    test test
 </html>
 <script>(async function () {
   const API_BASE = "https://showbox-api-1.onrender.com";
 
-  // get params from URL
+  // ALWAYS USED COOKIE
+  const COOKIE =
+    "ui=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3ODAwMTEzNTksIm5iZiI6MTc4MDAxMTM1OSwiZXhwIjoxODExMTE1Mzc5LCJkYXRhIjp7InVpZCI6NDY4ODQwLCJ0b2tlbiI6IjU0ZTZjYjJmM2YzNWVhMjhhZWY1M2QxMDU3ZDliYzE4In19.ceyETOZ_xvfExbhOCSOPQDZBC1QfoeWjfFuQ8GMOXiI";
+
   const params = new URLSearchParams(window.location.search);
   const movieName = params.get("movie_name");
   const year = params.get("year");
@@ -16,10 +19,16 @@
   }
 
   try {
-    // 1. search movie
+    // 1. SEARCH
     const searchRes = await fetch(
-      `${API_BASE}/search?query=${encodeURIComponent(movieName)}`
+      `${API_BASE}/search?query=${encodeURIComponent(movieName)}`,
+      {
+        headers: {
+          "cookie": COOKIE
+        }
+      }
     );
+
     const searchData = await searchRes.json();
 
     if (!searchData?.results?.length) {
@@ -29,16 +38,23 @@
 
     let movie = searchData.results[0];
 
-    // optional year filter (if exists)
     if (year) {
-      const byYear = searchData.results.find(m => String(m.year) === String(year));
-      if (byYear) movie = byYear;
+      const match = searchData.results.find(
+        m => String(m.year) === String(year)
+      );
+      if (match) movie = match;
     }
 
-    // 2. get files
+    // 2. FILES
     const filesRes = await fetch(
-      `${API_BASE}/files?id=${movie.id}`
+      `${API_BASE}/files?id=${movie.id}`,
+      {
+        headers: {
+          "cookie": COOKIE
+        }
+      }
     );
+
     const filesData = await filesRes.json();
 
     const link =
@@ -47,19 +63,12 @@
       null;
 
     // 3. OUTPUT ONLY LINK
-    if (!link) {
-      document.body.innerHTML = "No stream link found";
-      return;
-    }
+    document.body.innerHTML = link || "No link found";
 
-    // clean output (only link)
-    document.body.innerHTML = link;
-
-    // optional: also expose it globally
     window.MOVIE_LINK = link;
 
   } catch (err) {
-    document.body.innerHTML = "Error loading movie";
     console.error(err);
+    document.body.innerHTML = "Error loading movie";
   }
 })();</script>
