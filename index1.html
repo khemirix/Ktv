@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>2Khemirix Tv</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    /* ── Player Modal overlay ───────────────────────────────────── */
+    #playerModal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: rgba(0,0,0,0.96);
+      overflow: hidden;
+    }
+    #playerModal.active { display: flex; flex-direction: column; }
+
+    /* Close button */
+    #playerClose {
+      position: absolute;
+      top: .75rem; right: 1rem;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.14);
+      color: #fff;
+      border-radius: 50%;
+      width: 36px; height: 36px;
+      font-size: 1rem;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .2s;
+      z-index: 10;
+    }
+    #playerClose:hover { background: rgba(255,255,255,0.18); }
+
+    /* ── Inner layout: video | episode panel ───────────────────── */
+    #playerInner {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+      height: 100%;
+    }
+
+    /* Left: video area */
+    #playerMain {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2.5rem 1.5rem 1.2rem;
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    /* Loading state */
+    #playerStateLoading { text-align: center; color: #fff; width: 100%; }
+    .player-spinner {
+      width: 46px; height: 46px;
+      border: 4px solid rgba(255,255,255,0.12);
+      border-top-color: #e50914;
+      border-radius: 50%;
+      animation: pspin .8s linear infinite;
+      margin: 0 auto 1rem;
+    }
+    #playerLoadingTitle { font-size: .9rem; color: rgba(255,255,255,.5); font-family: sans-serif; }
+
+    /* Video state */
+    #playerStateVideo { width: 100%; display: flex; flex-direction: column; }
+    #playerTitle {
+      color: #fff;
+      font-size: .92rem;
+      font-weight: 600;
+      margin-bottom: .5rem;
+      font-family: sans-serif;
+    }
+    #playerVideo {
+      width: 100%;
+      aspect-ratio: 16/9;
+      border-radius: 8px;
+      background: #000;
+      display: block;
+      max-height: 72vh;
+      object-fit: contain;
+    }
+    #qualityList { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .6rem; }
+    .quality-btn {
+      background: rgba(255,255,255,.07);
+      border: 1px solid rgba(255,255,255,.13);
+      color: rgba(255,255,255,.65);
+      border-radius: 5px;
+      padding: .25rem .7rem;
+      font-size: .73rem;
+      cursor: pointer;
+      transition: all .18s;
+    }
+    .quality-btn:hover { background: rgba(255,255,255,.13); color: #fff; }
+    .quality-btn.active { background: #e50914; border-color: #e50914; color: #fff; }
+
+    /* Error state */
+    #playerStateError { text-align: center; color: #fff; font-family: sans-serif; }
+    .error-icon { font-size: 2.2rem; margin-bottom: .6rem; }
+    #playerErrorMsg { color: rgba(255,255,255,.45); font-size: .85rem; margin-top: .3rem; }
+
+    /* ── Episode panel (right sidebar) ──────────────────────────── */
+    #episodePanel {
+      width: 280px;
+      flex-shrink: 0;
+      background: #0d0d0d;
+      border-left: 1px solid rgba(255,255,255,.07);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #episodePanel[hidden] { display: none; }
+
+    #seasonTabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .35rem;
+      padding: .75rem .75rem .5rem;
+      border-bottom: 1px solid rgba(255,255,255,.07);
+      flex-shrink: 0;
+    }
+    .season-tab {
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.1);
+      color: rgba(255,255,255,.55);
+      border-radius: 5px;
+      padding: .22rem .6rem;
+      font-size: .72rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all .15s;
+      font-family: monospace;
+    }
+    .season-tab:hover { background: rgba(255,255,255,.12); color: #fff; }
+    .season-tab.active { background: #e50914; border-color: #e50914; color: #fff; }
+
+    #episodeList {
+      flex: 1;
+      overflow-y: auto;
+      padding: .4rem .5rem;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,.12) transparent;
+    }
+    #episodeList::-webkit-scrollbar { width: 4px; }
+    #episodeList::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 4px; }
+
+    .ep-item {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      padding: .45rem .5rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background .15s;
+      border: 1px solid transparent;
+    }
+    .ep-item:hover { background: rgba(255,255,255,.06); }
+    .ep-item.active {
+      background: rgba(229,9,20,.1);
+      border-color: rgba(229,9,20,.3);
+    }
+
+    .ep-thumb {
+      width: 68px;
+      height: 40px;
+      object-fit: cover;
+      border-radius: 4px;
+      flex-shrink: 0;
+      background: #1a1a1a;
+    }
+    .ep-thumb-placeholder {
+      width: 68px;
+      height: 40px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      background: #1a1a1a;
+    }
+
+    .ep-info { min-width: 0; }
+    .ep-num {
+      font-family: monospace;
+      font-size: .65rem;
+      color: #e50914;
+      font-weight: 700;
+    }
+    .ep-name {
+      font-size: .75rem;
+      color: rgba(255,255,255,.75);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: .1rem;
+    }
+    .ep-item.active .ep-name { color: #fff; }
+
+    .ep-loading {
+      text-align: center;
+      color: rgba(255,255,255,.3);
+      font-size: .78rem;
+      padding: 1.5rem 0;
+      font-family: sans-serif;
+    }
+
+    /* Responsive: stack on small screens */
+    @media (max-width: 640px) {
+      #playerInner { flex-direction: column; }
+      #episodePanel {
+        width: 100%;
+        border-left: none;
+        border-top: 1px solid rgba(255,255,255,.07);
+        max-height: 38vh;
+      }
+    }
+
+    @keyframes pspin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav class="navbar navbar-dark bg-dark fixed-top">
+    <div class="container-fluid d-flex justify-content-between align-items-center">
+      <span class="navbar-brand mb-0 h1">
+        <i class="fas fa-film"></i>
+        <img src="./css/img/Khemirix.png" alt="Khemirix" width="50%">
+      </span>
+      <div class="d-flex gap-3 align-items-center">
+        <div class="nav-tabs-custom">
+          <button class="tab-btn active" data-tab="movies" tabindex="0">Movies</button>
+          <button class="tab-btn" data-tab="tv" tabindex="0">TV Shows</button>
+        </div>
+        <input type="text" id="searchInput" class="form-control form-control-sm search-input"
+          placeholder="Search movies, shows…" aria-label="Search" tabindex="0">
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <div id="heroSection" class="hero-section">
+    <div class="hero-content">
+      <h1 id="heroTitle">Welcome to Khemirix TV</h1>
+      <p id="heroDescription">Stream unlimited movies and TV shows</p>
+      <button id="heroPlayBtn" class="btn btn-primary btn-lg" tabindex="0">
+        <i class="fas fa-play"></i> Watch Now
+      </button>
+    </div>
+    <div id="heroImage" class="hero-image"></div>
+  </div>
+
+  <!-- Content -->
+  <div class="container-fluid content-container">
+    <div id="mainContent"></div>
+  </div>
+
+  <!-- ── Player Modal ───────────────────────────────────────────── -->
+  <div id="playerModal" role="dialog" aria-modal="true" aria-label="Video Player">
+    <button id="playerClose" aria-label="Close player">✕</button>
+
+    <div id="playerInner">
+
+      <!-- Left: video + states -->
+      <div id="playerMain">
+
+        <!-- Loading -->
+        <div id="playerStateLoading">
+          <div class="player-spinner"></div>
+          <div id="playerLoadingTitle">Loading…</div>
+        </div>
+
+        <!-- Video -->
+        <div id="playerStateVideo" hidden>
+          <div id="playerTitle"></div>
+          <video id="playerVideo" controls playsinline></video>
+          <div id="qualityList"></div>
+        </div>
+
+        <!-- Error -->
+        <div id="playerStateError" hidden>
+          <div class="error-icon">🎬</div>
+          <div style="font-size:1.1rem;font-weight:700;color:#fff;font-family:sans-serif">Not Found</div>
+          <div id="playerErrorMsg"></div>
+        </div>
+
+      </div>
+
+      <!-- Right: episode panel (TV only) -->
+      <div id="episodePanel" hidden>
+        <div id="seasonTabs"></div>
+        <div id="episodeList"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="js/tmdb.js"></script>
+  <script src="js/resolver.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

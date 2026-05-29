@@ -6,20 +6,376 @@
   <title>2Khemirix Tv</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
   <style>
-    /* ── Player Modal overlay ───────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      background: #0a0a0a;
+      color: #fff;
+      font-family: 'Outfit', 'Segoe UI', sans-serif;
+      overflow-x: hidden;
+      scrollbar-width: thin;
+      scrollbar-color: #333 transparent;
+    }
+
+    /* ── NAVBAR ─────────────────────────────────────────────────── */
+    .navbar {
+      position: fixed !important;
+      top: 0; left: 0; right: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 2.5rem;
+      height: 62px;
+      background: rgba(10,10,10,0.92) !important;
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .navbar-brand {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: #fff !important;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      text-decoration: none;
+      letter-spacing: -0.03em;
+      margin-right: 0;
+    }
+    .navbar-brand img { height: 28px; width: auto; object-fit: contain; }
+    .navbar-brand .brand-logo-wrap { display: flex; align-items: center; gap: 0.4rem; }
+    .brand-play-icon {
+      width: 30px; height: 30px;
+      background: #e50914;
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.7rem;
+      flex-shrink: 0;
+    }
+    .brand-name { color: #fff; }
+
+    /* Center nav group: tabs + search */
+    .navbar-center-group {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    .nav-tabs-custom {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .tab-btn {
+      background: none;
+      border: none;
+      color: rgba(255,255,255,0.55);
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 0.4rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: color 0.2s, background 0.2s;
+    }
+    .tab-btn:hover { color: #fff; background: rgba(255,255,255,0.07); }
+    .tab-btn.active { color: #fff; }
+    .tab-btn.active::after {
+      /* underline via outline trick */
+    }
+
+    /* Search */
+    .search-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .search-icon {
+      position: absolute;
+      right: 0.85rem;
+      color: rgba(255,255,255,0.4);
+      font-size: 0.85rem;
+      pointer-events: none;
+    }
+    .search-input {
+      background: rgba(255,255,255,0.07) !important;
+      border: 1px solid rgba(255,255,255,0.1) !important;
+      border-radius: 8px !important;
+      color: #fff !important;
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.88rem;
+      padding: 0.45rem 2.2rem 0.45rem 0.9rem !important;
+      width: 200px;
+      transition: all 0.25s ease;
+      outline: none;
+    }
+    .search-input::placeholder { color: rgba(255,255,255,0.3) !important; }
+    .search-input:focus {
+      background: rgba(255,255,255,0.1) !important;
+      border-color: rgba(255,255,255,0.25) !important;
+      box-shadow: none !important;
+      width: 240px;
+    }
+
+    /* ── HERO ────────────────────────────────────────────────────── */
+    .hero-section {
+      position: relative;
+      height: 88vh;
+      min-height: 520px;
+      overflow: hidden;
+      display: flex;
+      align-items: flex-end;
+      margin-bottom: 0;
+    }
+
+    .hero-image {
+      position: absolute;
+      inset: 0;
+      background-size: cover;
+      background-position: center top;
+      z-index: 1;
+    }
+    /* Gradient: fade from right-top, darken bottom completely */
+    .hero-image::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(to right, rgba(10,10,10,0.92) 0%, rgba(10,10,10,0.55) 45%, rgba(10,10,10,0.1) 100%),
+        linear-gradient(to top,   rgba(10,10,10,1)    0%, rgba(10,10,10,0.0) 50%);
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 2;
+      padding: 0 3.5rem 4.5rem;
+      max-width: 560px;
+    }
+
+    .hero-meta-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .hero-rating {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      color: #f5c518;
+      font-weight: 700;
+      font-size: 0.88rem;
+    }
+    .hero-dot {
+      width: 3px; height: 3px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.35);
+    }
+    .hero-year, .hero-genre {
+      font-size: 0.82rem;
+      color: rgba(255,255,255,0.55);
+      font-weight: 500;
+    }
+
+    .hero-content h1 {
+      font-size: clamp(2.2rem, 4.5vw, 4rem);
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 1.0;
+      margin-bottom: 0.9rem;
+      text-transform: uppercase;
+    }
+
+    .hero-content p {
+      font-size: 0.92rem;
+      line-height: 1.65;
+      color: rgba(255,255,255,0.6);
+      margin-bottom: 1.6rem;
+      font-weight: 400;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .hero-actions { display: flex; gap: 0.75rem; align-items: center; }
+
+    .hero-content .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      border-radius: 8px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.92rem;
+      font-weight: 700;
+      padding: 0.65rem 1.6rem;
+      transition: all 0.2s ease;
+      border: none;
+    }
+    .btn-play-hero {
+      background: #fff !important;
+      color: #000 !important;
+    }
+    .btn-play-hero:hover {
+      background: rgba(255,255,255,0.85) !important;
+      transform: translateY(-1px);
+    }
+    .btn-info-hero {
+      background: rgba(109,109,110,0.7) !important;
+      color: #fff !important;
+    }
+    .btn-info-hero:hover {
+      background: rgba(109,109,110,0.5) !important;
+    }
+
+    /* ── CONTENT ─────────────────────────────────────────────────── */
+    .content-container {
+      padding: 2.5rem 0 4rem;
+      background: #0a0a0a;
+    }
+
+    .content-section {
+      margin-bottom: 3rem;
+      padding: 0 2.5rem;
+    }
+
+    .section-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin-bottom: 1.1rem;
+      padding-left: 0;
+      border-left: none;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .section-title::before {
+      content: '';
+      display: block;
+      width: 3px;
+      height: 1.1em;
+      background: #e50914;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    /* ── MOVIE GRID ──────────────────────────────────────────────── */
+    .movie-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+      gap: 0.85rem;
+      width: 100%;
+    }
+
+    /* ── CARD ────────────────────────────────────────────────────── */
+    .movie-card {
+      position: relative;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #1a1a1a;
+      cursor: pointer;
+      transition: transform 0.25s cubic-bezier(.25,.8,.25,1), box-shadow 0.25s ease;
+      aspect-ratio: 2/3;
+      height: auto;
+    }
+    .movie-card img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: transform 0.35s ease;
+    }
+    .movie-card:hover {
+      transform: scale(1.04) translateY(-4px);
+      box-shadow: 0 16px 40px rgba(0,0,0,0.7);
+      z-index: 4;
+    }
+    .movie-card:hover img { transform: scale(1.05); }
+
+    .movie-card-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.3) 45%, transparent 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 0.85rem;
+      opacity: 0;
+      transition: opacity 0.22s ease;
+    }
+    .movie-card:hover .movie-card-overlay { opacity: 1; }
+
+    /* Always-visible bottom info strip */
+    .movie-card-strip {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 0.65rem 0.75rem 0.7rem;
+      background: linear-gradient(to top, rgba(0,0,0,0.82) 0%, transparent 100%);
+    }
+
+    .movie-card-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 0.15rem;
+    }
+    .movie-card-info {
+      font-size: 0.7rem;
+      color: rgba(255,255,255,0.48);
+      font-weight: 500;
+    }
+    .movie-card-actions {
+      display: flex;
+      gap: 0.4rem;
+      margin-top: 0.55rem;
+    }
+    .btn-play-small {
+      flex: 1;
+      background: #e50914;
+      border: none;
+      border-radius: 5px;
+      color: #fff;
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.42rem 0.5rem;
+      cursor: pointer;
+      transition: background 0.15s;
+      display: flex; align-items: center; justify-content: center; gap: 0.3rem;
+    }
+    .btn-play-small:hover { background: #c40812; }
+    .btn-more {
+      background: rgba(255,255,255,0.15);
+      border: none;
+      border-radius: 5px;
+      color: #fff;
+      padding: 0.42rem 0.55rem;
+      cursor: pointer;
+      font-size: 0.75rem;
+      transition: background 0.15s;
+    }
+    .btn-more:hover { background: rgba(255,255,255,0.25); }
+
+    /* ── PLAYER MODAL ────────────────────────────────────────────── */
     #playerModal {
       display: none;
       position: fixed;
       inset: 0;
       z-index: 9999;
-      background: rgba(0,0,0,0.96);
+      background: rgba(0,0,0,0.97);
       overflow: hidden;
     }
     #playerModal.active { display: flex; flex-direction: column; }
 
-    /* Close button */
     #playerClose {
       position: absolute;
       top: .75rem; right: 1rem;
@@ -36,27 +392,14 @@
     }
     #playerClose:hover { background: rgba(255,255,255,0.18); }
 
-    /* ── Inner layout: video | episode panel ───────────────────── */
-    #playerInner {
-      display: flex;
-      flex: 1;
-      overflow: hidden;
-      height: 100%;
-    }
-
-    /* Left: video area */
+    #playerInner { display: flex; flex: 1; overflow: hidden; height: 100%; }
     #playerMain {
       flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
       padding: 2.5rem 1.5rem 1.2rem;
-      overflow: hidden;
-      min-width: 0;
+      overflow: hidden; min-width: 0;
     }
 
-    /* Loading state */
     #playerStateLoading { text-align: center; color: #fff; width: 100%; }
     .player-spinner {
       width: 46px; height: 46px;
@@ -66,194 +409,147 @@
       animation: pspin .8s linear infinite;
       margin: 0 auto 1rem;
     }
-    #playerLoadingTitle { font-size: .9rem; color: rgba(255,255,255,.5); font-family: sans-serif; }
+    #playerLoadingTitle { font-size: .9rem; color: rgba(255,255,255,.5); font-family: 'Outfit', sans-serif; }
 
-    /* Video state */
     #playerStateVideo { width: 100%; display: flex; flex-direction: column; }
-    #playerTitle {
-      color: #fff;
-      font-size: .92rem;
-      font-weight: 600;
-      margin-bottom: .5rem;
-      font-family: sans-serif;
-    }
+    #playerTitle { color: #fff; font-size: .92rem; font-weight: 600; margin-bottom: .5rem; font-family: 'Outfit', sans-serif; }
     #playerVideo {
-      width: 100%;
-      aspect-ratio: 16/9;
-      border-radius: 8px;
-      background: #000;
-      display: block;
-      max-height: 72vh;
-      object-fit: contain;
+      width: 100%; aspect-ratio: 16/9; border-radius: 8px; background: #000;
+      display: block; max-height: 72vh; object-fit: contain;
     }
     #qualityList { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .6rem; }
     .quality-btn {
-      background: rgba(255,255,255,.07);
-      border: 1px solid rgba(255,255,255,.13);
-      color: rgba(255,255,255,.65);
-      border-radius: 5px;
-      padding: .25rem .7rem;
-      font-size: .73rem;
-      cursor: pointer;
-      transition: all .18s;
+      background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.13);
+      color: rgba(255,255,255,.65); border-radius: 5px; padding: .25rem .7rem;
+      font-size: .73rem; cursor: pointer; transition: all .18s;
     }
     .quality-btn:hover { background: rgba(255,255,255,.13); color: #fff; }
     .quality-btn.active { background: #e50914; border-color: #e50914; color: #fff; }
 
-    /* Error state */
-    #playerStateError { text-align: center; color: #fff; font-family: sans-serif; }
+    #playerStateError { text-align: center; color: #fff; font-family: 'Outfit', sans-serif; }
     .error-icon { font-size: 2.2rem; margin-bottom: .6rem; }
     #playerErrorMsg { color: rgba(255,255,255,.45); font-size: .85rem; margin-top: .3rem; }
 
-    /* ── Episode panel (right sidebar) ──────────────────────────── */
     #episodePanel {
-      width: 280px;
-      flex-shrink: 0;
-      background: #0d0d0d;
+      width: 280px; flex-shrink: 0; background: #0d0d0d;
       border-left: 1px solid rgba(255,255,255,.07);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
+      display: flex; flex-direction: column; overflow: hidden;
     }
     #episodePanel[hidden] { display: none; }
-
     #seasonTabs {
-      display: flex;
-      flex-wrap: wrap;
-      gap: .35rem;
+      display: flex; flex-wrap: wrap; gap: .35rem;
       padding: .75rem .75rem .5rem;
-      border-bottom: 1px solid rgba(255,255,255,.07);
-      flex-shrink: 0;
+      border-bottom: 1px solid rgba(255,255,255,.07); flex-shrink: 0;
     }
     .season-tab {
-      background: rgba(255,255,255,.06);
-      border: 1px solid rgba(255,255,255,.1);
-      color: rgba(255,255,255,.55);
-      border-radius: 5px;
-      padding: .22rem .6rem;
-      font-size: .72rem;
-      font-weight: 700;
-      cursor: pointer;
-      transition: all .15s;
-      font-family: monospace;
+      background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
+      color: rgba(255,255,255,.55); border-radius: 5px; padding: .22rem .6rem;
+      font-size: .72rem; font-weight: 700; cursor: pointer; transition: all .15s; font-family: monospace;
     }
     .season-tab:hover { background: rgba(255,255,255,.12); color: #fff; }
     .season-tab.active { background: #e50914; border-color: #e50914; color: #fff; }
-
     #episodeList {
-      flex: 1;
-      overflow-y: auto;
-      padding: .4rem .5rem;
-      scrollbar-width: thin;
-      scrollbar-color: rgba(255,255,255,.12) transparent;
+      flex: 1; overflow-y: auto; padding: .4rem .5rem;
+      scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.12) transparent;
     }
     #episodeList::-webkit-scrollbar { width: 4px; }
     #episodeList::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 4px; }
-
     .ep-item {
-      display: flex;
-      align-items: center;
-      gap: .6rem;
-      padding: .45rem .5rem;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: background .15s;
-      border: 1px solid transparent;
+      display: flex; align-items: center; gap: .6rem; padding: .45rem .5rem;
+      border-radius: 6px; cursor: pointer; transition: background .15s; border: 1px solid transparent;
     }
     .ep-item:hover { background: rgba(255,255,255,.06); }
-    .ep-item.active {
-      background: rgba(229,9,20,.1);
-      border-color: rgba(229,9,20,.3);
-    }
-
-    .ep-thumb {
-      width: 68px;
-      height: 40px;
-      object-fit: cover;
-      border-radius: 4px;
-      flex-shrink: 0;
-      background: #1a1a1a;
-    }
-    .ep-thumb-placeholder {
-      width: 68px;
-      height: 40px;
-      border-radius: 4px;
-      flex-shrink: 0;
-      background: #1a1a1a;
-    }
-
+    .ep-item.active { background: rgba(229,9,20,.1); border-color: rgba(229,9,20,.3); }
+    .ep-thumb { width: 68px; height: 40px; object-fit: cover; border-radius: 4px; flex-shrink: 0; background: #1a1a1a; }
+    .ep-thumb-placeholder { width: 68px; height: 40px; border-radius: 4px; flex-shrink: 0; background: #1a1a1a; }
     .ep-info { min-width: 0; }
-    .ep-num {
-      font-family: monospace;
-      font-size: .65rem;
-      color: #e50914;
-      font-weight: 700;
-    }
-    .ep-name {
-      font-size: .75rem;
-      color: rgba(255,255,255,.75);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      margin-top: .1rem;
-    }
+    .ep-num { font-family: monospace; font-size: .65rem; color: #e50914; font-weight: 700; }
+    .ep-name { font-size: .75rem; color: rgba(255,255,255,.75); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: .1rem; }
     .ep-item.active .ep-name { color: #fff; }
+    .ep-loading { text-align: center; color: rgba(255,255,255,.3); font-size: .78rem; padding: 1.5rem 0; }
 
-    .ep-loading {
-      text-align: center;
-      color: rgba(255,255,255,.3);
-      font-size: .78rem;
-      padding: 1.5rem 0;
-      font-family: sans-serif;
-    }
-
-    /* Responsive: stack on small screens */
     @media (max-width: 640px) {
       #playerInner { flex-direction: column; }
-      #episodePanel {
-        width: 100%;
-        border-left: none;
-        border-top: 1px solid rgba(255,255,255,.07);
-        max-height: 38vh;
-      }
+      #episodePanel { width: 100%; border-left: none; border-top: 1px solid rgba(255,255,255,.07); max-height: 38vh; }
+    }
+    @keyframes pspin { to { transform: rotate(360deg); } }
+
+    /* ── RESPONSIVE ──────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      .navbar { padding: 0 1.2rem; }
+      .hero-content { padding: 0 1.5rem 3.5rem; }
+      .content-section { padding: 0 1.2rem; }
+      .movie-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+    }
+    @media (max-width: 600px) {
+      .hero-section { height: 70vh; }
+      .hero-content h1 { font-size: 1.9rem; }
+      .hero-content p { display: none; }
+      .movie-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.6rem; }
+      .movie-card-strip { display: none; }
     }
 
-    @keyframes pspin { to { transform: rotate(360deg); } }
+    /* ── TV MODE ─────────────────────────────────────────────────── */
+    .tv-mode { zoom: 1.1; }
+    .tv-mode input { font-size: 22px; }
+    .tv-mode * { cursor: none !important; }
+    .tv-mode :focus { outline: 4px solid #e50914; transform: scale(1.08); transition: transform 0.12s ease; z-index: 1000; }
+    .tv-mode .movie-card:focus img { transform: scale(1.1); }
   </style>
 </head>
 <body>
 
-  <!-- Navigation -->
-  <nav class="navbar navbar-dark bg-dark fixed-top">
-    <div class="container-fluid d-flex justify-content-between align-items-center">
-      <span class="navbar-brand mb-0 h1">
-        <i class="fas fa-film"></i>
-        <img src="./css/img/Khemirix.png" alt="Khemirix" width="50%">
-      </span>
-      <div class="d-flex gap-3 align-items-center">
-        <div class="nav-tabs-custom">
-          <button class="tab-btn active" data-tab="movies" tabindex="0">Movies</button>
-          <button class="tab-btn" data-tab="tv" tabindex="0">TV Shows</button>
+  <!-- ── Navigation ─────────────────────────────────────────────── -->
+  <nav class="navbar navbar-dark fixed-top">
+    <div style="display:flex;align-items:center;gap:0.5rem;">
+      <!-- Brand -->
+      <a class="navbar-brand" href="#">
+        <div class="brand-logo-wrap">
+          <div class="brand-play-icon">
+            <i class="fas fa-play" style="margin-left:2px;color:#fff;font-size:0.65rem"></i>
+          </div>
+          <img src="./css/img/Khemirix.png" alt="Khemirix"
+            onerror="this.style.display='none';this.nextElementSibling.style.display=''"
+          >
+          <span class="brand-name" style="display:none">Khemirix</span>
         </div>
-        <input type="text" id="searchInput" class="form-control form-control-sm search-input"
-          placeholder="Search movies, shows…" aria-label="Search" tabindex="0">
+      </a>
+    </div>
+
+    <!-- Center: tabs + search -->
+    <div class="navbar-center-group">
+      <div class="nav-tabs-custom">
+        <button class="tab-btn active" data-tab="movies" tabindex="0">Movies</button>
+        <button class="tab-btn" data-tab="tv" tabindex="0">TV Shows</button>
+      </div>
+
+      <div class="search-wrap">
+        <i class="fas fa-magnifying-glass search-icon"></i>
+        <input type="text" id="searchInput" class="form-control search-input"
+          placeholder="Search…" aria-label="Search" tabindex="0">
       </div>
     </div>
   </nav>
 
-  <!-- Hero -->
+  <!-- ── Hero ───────────────────────────────────────────────────── -->
   <div id="heroSection" class="hero-section">
+    <div id="heroImage" class="hero-image"></div>
     <div class="hero-content">
+      <div class="hero-meta-row" id="heroMeta"></div>
       <h1 id="heroTitle">Welcome to Khemirix TV</h1>
       <p id="heroDescription">Stream unlimited movies and TV shows</p>
-      <button id="heroPlayBtn" class="btn btn-primary btn-lg" tabindex="0">
-        <i class="fas fa-play"></i> Watch Now
-      </button>
+      <div class="hero-actions">
+        <button id="heroPlayBtn" class="btn btn-play-hero" tabindex="0">
+          <i class="fas fa-play" style="font-size:0.75rem"></i> Play
+        </button>
+        <button class="btn btn-info-hero" tabindex="0">
+          <i class="fas fa-circle-info" style="font-size:0.75rem"></i> More Info
+        </button>
+      </div>
     </div>
-    <div id="heroImage" class="hero-image"></div>
   </div>
 
-  <!-- Content -->
+  <!-- ── Content ────────────────────────────────────────────────── -->
   <div class="container-fluid content-container">
     <div id="mainContent"></div>
   </div>
@@ -261,40 +557,27 @@
   <!-- ── Player Modal ───────────────────────────────────────────── -->
   <div id="playerModal" role="dialog" aria-modal="true" aria-label="Video Player">
     <button id="playerClose" aria-label="Close player">✕</button>
-
     <div id="playerInner">
-
-      <!-- Left: video + states -->
       <div id="playerMain">
-
-        <!-- Loading -->
         <div id="playerStateLoading">
           <div class="player-spinner"></div>
           <div id="playerLoadingTitle">Loading…</div>
         </div>
-
-        <!-- Video -->
         <div id="playerStateVideo" hidden>
           <div id="playerTitle"></div>
           <video id="playerVideo" controls playsinline></video>
           <div id="qualityList"></div>
         </div>
-
-        <!-- Error -->
         <div id="playerStateError" hidden>
           <div class="error-icon">🎬</div>
-          <div style="font-size:1.1rem;font-weight:700;color:#fff;font-family:sans-serif">Not Found</div>
+          <div style="font-size:1.1rem;font-weight:700;color:#fff;font-family:'Outfit',sans-serif">Not Found</div>
           <div id="playerErrorMsg"></div>
         </div>
-
       </div>
-
-      <!-- Right: episode panel (TV only) -->
       <div id="episodePanel" hidden>
         <div id="seasonTabs"></div>
         <div id="episodeList"></div>
       </div>
-
     </div>
   </div>
 
@@ -303,5 +586,35 @@
   <script src="js/tmdb.js"></script>
   <script src="js/resolver.js"></script>
   <script src="js/app.js"></script>
+
+  <script>
+    /* ── Enhanced hero: populate rating/year/genre row ────────────── */
+    var _origSetHero = window.setHeroContent;
+
+    /* Patch createSection to add always-visible strip below overlay */
+    var _observer = new MutationObserver(function(mutations) {
+      mutations.forEach(function(m) {
+        m.addedNodes.forEach(function(node) {
+          if (!node.querySelectorAll) return;
+          node.querySelectorAll('.movie-card').forEach(function(card) {
+            if (card.dataset.stripped) return;
+            card.dataset.stripped = '1';
+            var overlay = card.querySelector('.movie-card-overlay');
+            if (!overlay) return;
+            var titleEl = overlay.querySelector('.movie-card-title');
+            var infoEl  = overlay.querySelector('.movie-card-info');
+            if (!titleEl) return;
+            var strip = document.createElement('div');
+            strip.className = 'movie-card-strip';
+            strip.innerHTML =
+              '<div class="movie-card-title">' + titleEl.innerHTML + '</div>' +
+              (infoEl ? '<div class="movie-card-info">' + infoEl.innerHTML + '</div>' : '');
+            card.appendChild(strip);
+          });
+        });
+      });
+    });
+    _observer.observe(document.getElementById('mainContent'), { childList: true, subtree: true });
+  </script>
 </body>
 </html>
