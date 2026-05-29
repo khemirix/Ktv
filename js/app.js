@@ -3,26 +3,23 @@ window.IS_TV_APP =
   navigator.userAgent.includes("SMART-TV") ||
   window.location !== window.parent.location;
 
-// Store items by a numeric key so we never put JSON inside onclick=""
-var _cardItems = {};
+var _cardItems   = {};
 var _cardCounter = 0;
-
-function _storeItem(item) {
-  var k = ++_cardCounter;
-  _cardItems[k] = item;
-  return k;
-}
+function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return k; }
 
 (async function () {
-  var mainContent  = document.getElementById('mainContent');
-  var tabBtns      = document.querySelectorAll('.tab-btn');
-  var searchInput  = document.getElementById('searchInput');
-  var currentTab   = 'movies';
+  var mainContent = document.getElementById('mainContent');
+  var tabBtns     = document.querySelectorAll('.tab-btn');
+  var searchInput = document.getElementById('searchInput');
+  var currentTab  = 'movies';
 
-  // ── TV Remote ──────────────────────────────────────────────────
+  // current TV show context for the episode panel
+  var _tvContext = null; // { title, year, tmdbId, seasons: [{season_number, episode_count}] }
+
+  // ── TV Remote ────────────────────────────────────────────────────
   if (window.IS_TV_APP) {
-    document.body.classList.add("tv-mode");
-    document.addEventListener("keydown", function (e) {
+    document.body.classList.add('tv-mode');
+    document.addEventListener('keydown', function(e) {
       var focusable = Array.from(document.querySelectorAll('[tabindex="0"]:not([disabled])'));
       if (!focusable.length) return;
       var index = focusable.indexOf(document.activeElement);
@@ -39,38 +36,42 @@ function _storeItem(item) {
       e.preventDefault();
       focusable[index].focus();
     });
-    window.addEventListener("load", function () {
+    window.addEventListener('load', function() {
       var first = document.querySelector('[tabindex="0"]');
       if (first) first.focus();
     });
   }
 
-  // ── Player helpers ─────────────────────────────────────────────
+  // ── Player helpers ───────────────────────────────────────────────
   function closePlayer() {
     var modal = document.getElementById('playerModal');
     var video = document.getElementById('playerVideo');
     if (video) { video.pause(); video.src = ''; }
     modal.classList.remove('active');
     document.body.style.overflow = '';
+    _tvContext = null;
     if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
   }
 
-  function showLoadingModal(title) {
-    document.getElementById('playerStateLoading').hidden = false;
-    document.getElementById('playerStateVideo').hidden   = true;
-    document.getElementById('playerStateError').hidden   = true;
-    document.getElementById('playerLoadingTitle').textContent = 'Resolving "' + title + '"…';
+  function setPlayerState(state) {
+    document.getElementById('playerStateLoading').hidden = state !== 'loading';
+    document.getElementById('playerStateVideo').hidden   = state !== 'video';
+    document.getElementById('playerStateError').hidden   = state !== 'error';
+  }
+
+  function openModal() {
     document.getElementById('playerModal').classList.add('active');
     document.body.style.overflow = 'hidden';
   }
 
-  function showVideoModal(links, title) {
+  // ── Load a video URL into the player ────────────────────────────
+  function playLinks(links, title) {
     var video       = document.getElementById('playerVideo');
     var qualityList = document.getElementById('qualityList');
-    document.getElementById('playerStateLoading').hidden = true;
-    document.getElementById('playerStateVideo').hidden   = false;
-    document.getElementById('playerStateError').hidden   = true;
-    document.getElementById('playerTitle').textContent   = title;
+    var titleEl     = document.getElementById('playerTitle');
+
+    titleEl.textContent = title || '';
+    setPlayerState('video');
 
     qualityList.innerHTML = '';
     links.forEach(function(link, i) {
@@ -90,43 +91,150 @@ function _storeItem(item) {
     video.play().catch(function(){});
   }
 
-  function showErrorModal(message) {
-    document.getElementById('playerStateLoading').hidden = true;
-    document.getElementById('playerStateVideo').hidden   = true;
-    document.getElementById('playerStateError').hidden   = false;
-    document.getElementById('playerErrorMsg').textContent = message;
+  // ── Episode panel ────────────────────────────────────────────────
+  async function buildEpisodePanel(tmdbId, seasons) {
+    var panel      = document.getElementById('episodePanel');
+    var seasonTabs = document.getElementById('seasonTabs');
+    var epList     = document.getElementById('episodeList');
+
+    panel.hidden = false;
+    seasonTabs.innerHTML = '';
+    epList.innerHTML     = '<div class="ep-loading">Loading…</div>';
+
+    // Build season tab buttons
+    seasons.forEach(function(s, i) {
+      var btn = document.createElement('button');
+      btn.className   = 'season-tab' + (i === 0 ? ' active' : '');
+      btn.textContent = 'S' + s.season_number;
+      btn.addEventListener('click', function() {
+        seasonTabs.querySelectorAll('.season-tab').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        loadEpisodes(tmdbId, s.season_number);
+      });
+      seasonTabs.appendChild(btn);
+    });
+
+    // Load season 1 by default
+    if (seasons.length) loadEpisodes(tmdbId, seasons[0].season_number);
   }
 
-  // ── Main play handler ──────────────────────────────────────────
-  window.openPlayerModal = async function (key, type) {
+  async function loadEpisodes(tmdbId, seasonNum) {
+    var epList = document.getElementById('episodeList');
+    epList.innerHTML = '<div class="ep-loading">Loading episodes…</div>';
+    try {
+      var data = await TMDB.getSeason(tmdbId, seasonNum);
+      var episodes = (data && data.episodes) ? data.episodes : [];
+      epList.innerHTML = '';
+      episodes.forEach(function(ep) {
+        var div = document.createElement('div');
+        div.className = 'ep-item';
+        var thumb = ep.still_path
+          ? '<img src="https://image.tmdb.org/t/p/w185' + ep.still_path + '" class="ep-thumb" onerror="this.style.display=\'none\'">'
+          : '<div class="ep-thumb ep-thumb-placeholder"></div>';
+        div.innerHTML =
+          thumb +
+          '<div class="ep-info">' +
+            '<div class="ep-num">S' + String(seasonNum).padStart(2,'0') + 'E' + String(ep.episode_number).padStart(2,'0') + '</div>' +
+            '<div class="ep-name">' + (ep.name || 'Episode ' + ep.episode_number) + '</div>' +
+          '</div>';
+        div.addEventListener('click', function() {
+          // Mark active
+          epList.querySelectorAll('.ep-item').forEach(function(e) { e.classList.remove('active'); });
+          div.classList.add('active');
+          loadTVEpisode(seasonNum, ep.episode_number, ep.name);
+        });
+        epList.appendChild(div);
+      });
+    } catch(err) {
+      epList.innerHTML = '<div class="ep-loading" style="color:#f87171">Failed to load episodes</div>';
+    }
+  }
+
+  async function loadTVEpisode(season, episode, epName) {
+    if (!_tvContext) return;
+    var label = _tvContext.title + ' · S' + String(season).padStart(2,'0') + 'E' + String(episode).padStart(2,'0');
+    // Show loading inside the player area without closing the whole modal
+    document.getElementById('playerLoadingTitle').textContent = 'Loading ' + label + '…';
+    setPlayerState('loading');
+    try {
+      var links = await Resolver.resolveEpisode({
+        title:   _tvContext.title,
+        year:    _tvContext.year,
+        season:  season,
+        episode: episode
+      });
+      playLinks(links, label);
+    } catch(err) {
+      setPlayerState('error');
+      document.getElementById('playerErrorMsg').textContent = err.message || 'Not found';
+    }
+  }
+
+  // ── Main play handler ────────────────────────────────────────────
+  window.openPlayerModal = async function(key, type) {
     var item  = _cardItems[key];
-    if (!item) { console.error('Item not found for key', key); return; }
+    if (!item) return;
     var title = item.title || item.name || 'Unknown';
     var year  = (item.release_date || item.first_air_date || '').split('-')[0] || '';
 
-    showLoadingModal(title);
-    try {
-      var links = await Resolver.resolve({ title: title, year: year, type: type });
-      showVideoModal(links, title);
-    } catch (err) {
-      showErrorModal(err.message || 'Not found');
+    document.getElementById('playerLoadingTitle').textContent = 'Loading "' + title + '"…';
+    document.getElementById('episodePanel').hidden = true;
+    setPlayerState('loading');
+    openModal();
+
+    if (type === 'tv') {
+      // Fetch TMDB season info + resolve S1E1 in parallel
+      try {
+        var details = await TMDB.getById(item.id);
+        var seasons = (details && details.seasons)
+          ? details.seasons.filter(function(s) { return s.season_number > 0; })
+          : [];
+
+        _tvContext = { title: title, year: year, tmdbId: item.id, seasons: seasons };
+
+        // Build episode panel (async, non-blocking)
+        buildEpisodePanel(item.id, seasons);
+
+        // Resolve S1E1
+        var links = await Resolver.resolveEpisode({ title: title, year: year, season: 1, episode: 1 });
+        var epLabel = title + ' · S01E01';
+        playLinks(links, epLabel);
+
+        // Mark first episode active once panel loads
+        setTimeout(function() {
+          var first = document.querySelector('.ep-item');
+          if (first) first.classList.add('active');
+        }, 800);
+
+      } catch(err) {
+        setPlayerState('error');
+        document.getElementById('playerErrorMsg').textContent = err.message || 'Not found';
+      }
+    } else {
+      // Movie
+      document.getElementById('episodePanel').hidden = true;
+      try {
+        var links = await Resolver.resolveMovie({ title: title, year: year });
+        playLinks(links, title);
+      } catch(err) {
+        setPlayerState('error');
+        document.getElementById('playerErrorMsg').textContent = err.message || 'Not found';
+      }
     }
   };
 
   document.getElementById('playerClose').addEventListener('click', closePlayer);
-  document.getElementById('playerModal').addEventListener('click', function (e) {
+  document.getElementById('playerModal').addEventListener('click', function(e) {
     if (e.target === this) closePlayer();
   });
   window.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') closePlayer();
   });
 
-  // ── Cards ──────────────────────────────────────────────────────
+  // ── Cards ────────────────────────────────────────────────────────
   function createMovieCard(item, type) {
     var year   = (item.release_date || item.first_air_date || '').split('-')[0] || 'N/A';
-    var poster = item.poster_path
-      ? TMDB.IMG + item.poster_path
-      : 'https://via.placeholder.com/200x300?text=No+Image';
+    var poster = item.poster_path ? TMDB.IMG + item.poster_path : 'https://via.placeholder.com/200x300?text=No+Image';
     var title  = (item.title || item.name || '').replace(/"/g, '&quot;');
     var k      = _storeItem(item);
     return '<div class="movie-card" tabindex="0" onclick="window.openPlayerModal(' + k + ',\'' + type + '\')">' +
@@ -157,13 +265,10 @@ function _storeItem(item) {
     var f = items[0];
     var k = _storeItem(f);
     var heroType = currentTab === 'tv' ? 'tv' : 'movie';
-    document.getElementById('heroImage').style.backgroundImage =
-      'url(\'' + (f.poster_path ? TMDB.IMG + f.poster_path : '') + '\')';
+    document.getElementById('heroImage').style.backgroundImage = 'url(\'' + (f.poster_path ? TMDB.IMG + f.poster_path : '') + '\')';
     document.getElementById('heroTitle').textContent       = f.title || f.name || 'Featured';
-    document.getElementById('heroDescription').textContent =
-      f.overview ? f.overview.substring(0, 150) + '…' : 'Stream now';
-    document.getElementById('heroPlayBtn').onclick =
-      function() { window.openPlayerModal(k, heroType); };
+    document.getElementById('heroDescription').textContent = f.overview ? f.overview.substring(0, 150) + '…' : 'Stream now';
+    document.getElementById('heroPlayBtn').onclick = function() { window.openPlayerModal(k, heroType); };
   }
 
   var sortByDate = function(arr) {
@@ -173,21 +278,21 @@ function _storeItem(item) {
   };
 
   async function loadMovies() {
-    var results = await Promise.all([TMDB.moviesNowPlaying(), TMDB.moviesPopular(), TMDB.moviesTopRated()]);
+    var r = await Promise.all([TMDB.moviesNowPlaying(), TMDB.moviesPopular(), TMDB.moviesTopRated()]);
     mainContent.innerHTML = '';
-    await setHeroContent(sortByDate(results[0].results));
-    mainContent.appendChild(createSection('Now Playing',  sortByDate(results[0].results).slice(0,12), 'movie'));
-    mainContent.appendChild(createSection('Popular',      sortByDate(results[1].results).slice(0,12), 'movie'));
-    mainContent.appendChild(createSection('Top Rated',    sortByDate(results[2].results).slice(0,12), 'movie'));
+    await setHeroContent(sortByDate(r[0].results));
+    mainContent.appendChild(createSection('Now Playing', sortByDate(r[0].results).slice(0,12), 'movie'));
+    mainContent.appendChild(createSection('Popular',     sortByDate(r[1].results).slice(0,12), 'movie'));
+    mainContent.appendChild(createSection('Top Rated',   sortByDate(r[2].results).slice(0,12), 'movie'));
   }
 
   async function loadTV() {
-    var results = await Promise.all([TMDB.tvAiringToday(), TMDB.tvPopular(), TMDB.tvTopRated()]);
+    var r = await Promise.all([TMDB.tvAiringToday(), TMDB.tvPopular(), TMDB.tvTopRated()]);
     mainContent.innerHTML = '';
-    await setHeroContent(sortByDate(results[0].results));
-    mainContent.appendChild(createSection('Airing Today', sortByDate(results[0].results).slice(0,12), 'tv'));
-    mainContent.appendChild(createSection('Popular',      sortByDate(results[1].results).slice(0,12), 'tv'));
-    mainContent.appendChild(createSection('Top Rated',    sortByDate(results[2].results).slice(0,12), 'tv'));
+    await setHeroContent(sortByDate(r[0].results));
+    mainContent.appendChild(createSection('Airing Today', sortByDate(r[0].results).slice(0,12), 'tv'));
+    mainContent.appendChild(createSection('Popular',      sortByDate(r[1].results).slice(0,12), 'tv'));
+    mainContent.appendChild(createSection('Top Rated',    sortByDate(r[2].results).slice(0,12), 'tv'));
   }
 
   async function renderContent(tab) {
@@ -197,9 +302,7 @@ function _storeItem(item) {
     else if (tab === 'tv') await loadTV();
   }
 
-  tabBtns.forEach(function(btn) {
-    btn.addEventListener('click', function() { renderContent(btn.dataset.tab); });
-  });
+  tabBtns.forEach(function(btn) { btn.addEventListener('click', function() { renderContent(btn.dataset.tab); }); });
 
   searchInput.addEventListener('keydown', async function(e) {
     if (e.key !== 'Enter') return;
