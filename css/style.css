@@ -341,20 +341,21 @@ html, body {
   max-width: 600px;
 }
 
-/* BUTTON */
+
 #heroPlayBtn {
-  margin-top: 25px;
-
-  padding: 14px 30px;
-
+  background: var(--primary);
   border: none;
-  border-radius: 10px;
-
-  background: #fff;
-  color: #000;
-
-  font-weight: 800;
-  font-size: 16px;
-
+  border-radius: 6px;
+  color: white;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
   cursor: pointer;
+  transition: all 0.3s ease;
+  flex: 1;
+}
+
+#heroPlayBtn:hover {
+  background: #c40812;
+  transform: scale(1.05);
 }
