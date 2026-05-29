@@ -241,13 +241,23 @@
     </div>
   </nav>
 
-    <!-- ══════════════════════════════════════ HERO CAROUSEL ══════════════════════════════════════ -->
+  <!-- Hero -->
   <div id="heroSection" class="hero-section">
-    <!-- Slides injected here by JS -->
-    <div class="hero-progress" id="heroProgress"></div>
+    <div class="hero-content">
+      <h1 id="heroTitle">Welcome to Khemirix TV</h1>
+      <p id="heroDescription">Stream unlimited movies and TV shows</p>
+      <button id="heroPlayBtn" class="btn btn-primary btn-lg" tabindex="0">
+        <i class="fas fa-play"></i> Watch Now
+      </button>
+    </div>
+    <div id="heroImage" class="hero-image"></div>
   </div>
- 
- 
+
+  <!-- Content -->
+  <div class="container-fluid content-container">
+    <div id="mainContent"></div>
+  </div>
+
   <!-- ── Player Modal ───────────────────────────────────────────── -->
   <div id="playerModal" role="dialog" aria-modal="true" aria-label="Video Player">
     <button id="playerClose" aria-label="Close player">✕</button>
