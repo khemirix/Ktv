@@ -3,147 +3,61 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Player</title>
+  <title>KTV Player</title>
+
   <link rel="stylesheet" href="css/style.css">
+
+  <style>
+
+    body {
+      margin: 0;
+      background: #000;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+
+    .player-shell {
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+
+    .loading {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      font-size: 22px;
+      z-index: 999;
+    }
+
+  </style>
+
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 </head>
-<body class="player-page">
-  <script>
-(function () {
-  const block = () => {
-    try {
-      Object.defineProperty(window, 'location', {
-        configurable: false,
-        writable: false
-      });
-    } catch (e) {}
-  };
-  block();
-})();
-</script>
+<body>
 
-  <div class="player-shell">
-    <iframe id="playerFrame" src="about:blank" frameborder="0" allowfullscreen allow="autoplay; fullscreen" ></iframe>
-  </div>
-  <div class="player-info" id="playerInfo" aria-live="polite" hidden>
-    <h1 id="playerTitle">Loading…</h1>
-    <p id="playerOverview"></p>
-    <p style="margin-top:8px;font-size:13px;color:var(--muted)">Link: <a id="playerLink" href="#" target="_blank" rel="noopener noreferrer">-</a></p>
-  </div>
-  <div class="player-footer">Press Back to return • This product uses the OMDb API but is not endorsed or certified by OMDb. <a id="playerFooterLink" href="#" target="_blank" rel="noopener noreferrer" style="color:var(--muted);font-size:13px;word-break:break-all;margin-left:8px">-</a></div>
-  <script>(function () {
-  const originalOpen = window.open;
+<div class="loading" id="loading">
+  Loading stream...
+</div>
 
-  window.open = function () {
-    console.warn('Popup blocked:', arguments);
-    return null;
-  };
-})();
-</script>
-  <script src="js/tmdb.js"></script>
-  <script src="js/anti-ads.js"></script>
-  <script>
-    // Parse query parameters: ?type=movie&id=123 or ?movie/123 (slash-separated)
-    let type = '';
-    let id = '';
-    let season = '1';
-    let episode = '1';
+<div class="player-shell">
+  <video
+    id="videoPlayer"
+    controls
+    autoplay
+    playsinline
+  ></video>
+</div>
 
-    // Try query parameter format first (?type=movie&id=123)
-    const params = new URLSearchParams(location.search);
-    if (params.has('type') && params.has('id')) {
-      type = params.get('type') || '';
-      id = params.get('id') || '';
-      season = params.get('season') || '1';
-      episode = params.get('episode') || '1';
-    } else {
-      // Fall back to slash-separated format (?movie/123 or #movie/123)
-      let raw = location.search || '';
-      if (raw.startsWith('?')) raw = raw.slice(1);
-      if (!raw && location.hash && location.hash.startsWith('#')) raw = location.hash.slice(1);
-      const parts = raw.split('/').filter(Boolean);
-      type = parts[0] || '';
-      id = parts[1] || '';
-      season = parts[2] || '1';
-      episode = parts[3] || '1';
-    }
+<script>
 
-    const frame = document.getElementById('playerFrame');
-    if (typeof blockPlayerAds === 'function') {
-      blockPlayerAds(frame, { allowedHosts: ['vidking.net','www.vidking.net'], allowSameOrigin: false });
-    }
-    const infoEl = document.getElementById('playerInfo');
-    const titleEl = document.getElementById('playerTitle');
-    const overviewEl = document.getElementById('playerOverview');
-
-    // Helper to show info overlay
-    function showInfo(title, overview) {
-      if (!title && !overview) return;
-      titleEl.textContent = title || '';
-      overviewEl.textContent = overview || '';
-      infoEl.hidden = false;
-    }
-
-
-    // Load details from OMDb and set up embed
-    async function loadPlayerDetails() {
-      try {
-        if (type === 'tv' && id && TMDB.getEpisode) {
-          // Fetch TV episode details
-          const ep = await TMDB.getEpisode(id, season, episode);
-          if (ep) {
-            showInfo(ep.title || `Season ${ep.season} Episode ${ep.episode}`, ep.overview || '');
-            document.title = ep.title || document.title;
-          }
-          // Build TV embed URL: /embed/tv/id/season/episode
-          frame.src = `https://www.vidking.net/embed/tv/${encodeURIComponent(id)}/${encodeURIComponent(season)}/${encodeURIComponent(episode)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
-          // show full link (overlay + footer)
-          frame.sandbox='';
-          frame.style.pointerEvents = 'none';
-          const linkEl = document.getElementById('playerLink');
-          const footerEl = document.getElementById('playerFooterLink');
-          if (linkEl) { linkEl.href = frame.src; linkEl.textContent = frame.src; }
-          if (footerEl) { footerEl.href = frame.src; footerEl.textContent = frame.src; }
-        } else if (type === 'movie' && id && TMDB.getById) {
-          // Fetch movie details
-          const movie = await TMDB.getById(id);
-          if (movie) {
-            showInfo(movie.title || movie.name || '', movie.overview || '');
-            document.title = movie.title || movie.name || document.title;
-          }
-          // Build movie embed URL: /embed/movie/id
-          frame.src = `https://www.vidking.net/embed/movie/${encodeURIComponent(id)}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
-          // show full link (overlay + footer)
-          frame.sandbox='';
-          frame.style.pointerEvents = 'none';
-          const linkEl = document.getElementById('playerLink');
-          const footerEl = document.getElementById('playerFooterLink');
-          if (linkEl) { linkEl.href = frame.src; linkEl.textContent = frame.src; }
-          if (footerEl) { footerEl.href = frame.src; footerEl.textContent = frame.src; }
-          
-          // For movies, focus the iframe when it loads; do NOT request fullscreen programmatically
-          frame.addEventListener('load', () => {
-            try { frame.contentWindow && frame.contentWindow.focus(); } catch (e) {}
-          }, { once: true });
-        }
-      } catch (err) {
-        console.warn('Failed to load details:', err);
-      }
-    }
-
-    // Handle Back/Escape keys
-    window.addEventListener('keydown', async (e) => {
-      if (e.key === 'Backspace' || e.key === 'Escape') {
-        if (document.fullscreenElement) {
-          const exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
-          if (exit) await exit.call(document).catch(() => {});
-        } else {
-          history.back();
-        }
-      }
-    });
-
-    // Initialize
-    loadPlayerDetails();
-  </script>
-</body>
-</html>
+const API = "https://showbox-api-1.onrender.com";
