@@ -2,6 +2,7 @@ var TMDB = (function(){
   var API_KEY = '480d4cc2b31147cee62508f27a445cf2';
   var BASE    = 'https://api.themoviedb.org/3';
   var IMG     = 'https://image.tmdb.org/t/p/w500';
+  var IMG_HD  = 'https://image.tmdb.org/t/p/original';
 
   async function fetchJSON(path, params) {
     params = params || {};
@@ -22,13 +23,16 @@ var TMDB = (function(){
     return {
       results: data.results.map(function(item) {
         return {
-          id:           item.id,
-          poster_path:  item.poster_path  || '',
-          title:        item.title        || item.name || '',
-          name:         item.name         || item.title || '',
-          overview:     item.overview     || '',
-          media_type:   item.media_type   || (item.first_air_date ? 'tv' : 'movie'),
-          release_date: item.release_date || item.first_air_date || ''
+          id:             item.id,
+          poster_path:    item.poster_path    || '',
+          backdrop_path:  item.backdrop_path  || '',
+          title:          item.title          || item.name || '',
+          name:           item.name           || item.title || '',
+          overview:       item.overview       || '',
+          media_type:     item.media_type     || (item.first_air_date ? 'tv' : 'movie'),
+          release_date:   item.release_date   || item.first_air_date || '',
+          vote_average:   item.vote_average   || 0,
+          genre_ids:      item.genre_ids      || []
         };
       })
     };
@@ -36,35 +40,37 @@ var TMDB = (function(){
 
   async function getById(tmdbId) {
     if (!tmdbId) return null;
-    // Try movie first
     try {
       var m = await fetchJSON('/movie/' + encodeURIComponent(tmdbId), { language: 'en-US' });
       if (m && !m.status_code) return {
-        id:           m.id,
-        poster_path:  m.poster_path  || '',
-        title:        m.title,
-        name:         m.title,
-        overview:     m.overview,
-        release_date: m.release_date,
-        genres:       Array.isArray(m.genres) ? m.genres.map(function(g){return g.name;}) : [],
-        runtime:      m.runtime ? String(m.runtime) : '',
-        media_type:   'movie'
+        id:             m.id,
+        poster_path:    m.poster_path    || '',
+        backdrop_path:  m.backdrop_path  || '',
+        title:          m.title,
+        name:           m.title,
+        overview:       m.overview,
+        release_date:   m.release_date,
+        vote_average:   m.vote_average   || 0,
+        genres:         Array.isArray(m.genres) ? m.genres.map(function(g){return g.name;}) : [],
+        runtime:        m.runtime ? String(m.runtime) : '',
+        media_type:     'movie'
       };
     } catch(e) {}
-    // Try TV
     try {
       var t = await fetchJSON('/tv/' + encodeURIComponent(tmdbId), { language: 'en-US' });
       if (t && !t.status_code) return {
-        id:           t.id,
-        poster_path:  t.poster_path  || '',
-        title:        t.name,
-        name:         t.name,
-        overview:     t.overview,
-        release_date: t.first_air_date,
-        genres:       Array.isArray(t.genres) ? t.genres.map(function(g){return g.name;}) : [],
-        runtime:      t.episode_run_time && t.episode_run_time.length ? String(t.episode_run_time[0]) : '',
-        media_type:   'tv',
-        seasons:      Array.isArray(t.seasons) ? t.seasons : []
+        id:             t.id,
+        poster_path:    t.poster_path    || '',
+        backdrop_path:  t.backdrop_path  || '',
+        title:          t.name,
+        name:           t.name,
+        overview:       t.overview,
+        release_date:   t.first_air_date,
+        vote_average:   t.vote_average   || 0,
+        genres:         Array.isArray(t.genres) ? t.genres.map(function(g){return g.name;}) : [],
+        runtime:        t.episode_run_time && t.episode_run_time.length ? String(t.episode_run_time[0]) : '',
+        media_type:     'tv',
+        seasons:        Array.isArray(t.seasons) ? t.seasons : []
       };
     } catch(e) {}
     return null;
@@ -94,7 +100,6 @@ var TMDB = (function(){
     } catch(e) { return null; }
   }
 
-  // Get all episodes for a season
   async function getSeason(tmdbTvId, seasonNum) {
     if (!tmdbTvId || !seasonNum) return { episodes: [] };
     try {
@@ -103,24 +108,39 @@ var TMDB = (function(){
     } catch(e) { return { episodes: [] }; }
   }
 
-  async function moviesNowPlaying() { var d = await fetchJSON('/movie/now_playing', { language: 'en-US', page: 1 }); return { results: d.results || [] }; }
-  async function moviesPopular()    { var d = await fetchJSON('/movie/popular',      { language: 'en-US', page: 1 }); return { results: d.results || [] }; }
-  async function moviesTopRated()   { var d = await fetchJSON('/movie/top_rated',    { language: 'en-US', page: 1 }); return { results: d.results || [] }; }
-  async function tvAiringToday()    { var d = await fetchJSON('/tv/airing_today',    { language: 'en-US', page: 1 }); return { results: d.results || [] }; }
-  async function tvPopular()        { var d = await fetchJSON('/tv/popular',          { language: 'en-US', page: 1 }); return { results: d.results || [] }; }
-  async function tvTopRated()       { var d = await fetchJSON('/tv/top_rated',        { language: 'en-US', page: 1 }); return { results: d.results || [] }; }
+  function mapMovie(item) {
+    return {
+      id:             item.id,
+      poster_path:    item.poster_path    || '',
+      backdrop_path:  item.backdrop_path  || '',
+      title:          item.title          || item.name || '',
+      name:           item.name           || item.title || '',
+      overview:       item.overview       || '',
+      release_date:   item.release_date   || item.first_air_date || '',
+      vote_average:   item.vote_average   || 0,
+      genre_ids:      item.genre_ids      || []
+    };
+  }
+
+  async function moviesNowPlaying() { var d = await fetchJSON('/movie/now_playing', { language: 'en-US', page: 1 }); return { results: (d.results||[]).map(mapMovie) }; }
+  async function moviesPopular()    { var d = await fetchJSON('/movie/popular',      { language: 'en-US', page: 1 }); return { results: (d.results||[]).map(mapMovie) }; }
+  async function moviesTopRated()   { var d = await fetchJSON('/movie/top_rated',    { language: 'en-US', page: 1 }); return { results: (d.results||[]).map(mapMovie) }; }
+  async function tvAiringToday()    { var d = await fetchJSON('/tv/airing_today',    { language: 'en-US', page: 1 }); return { results: (d.results||[]).map(mapMovie) }; }
+  async function tvPopular()        { var d = await fetchJSON('/tv/popular',          { language: 'en-US', page: 1 }); return { results: (d.results||[]).map(mapMovie) }; }
+  async function tvTopRated()       { var d = await fetchJSON('/tv/top_rated',        { language: 'en-US', page: 1 }); return { results: (d.results||[]).map(mapMovie) }; }
 
   return {
-    IMG: IMG,
-    search: search,
+    IMG:     IMG,
+    IMG_HD:  IMG_HD,
+    search:  search,
     getById: getById,
     getEpisode: getEpisode,
-    getSeason: getSeason,
+    getSeason:  getSeason,
     moviesNowPlaying: moviesNowPlaying,
-    moviesPopular: moviesPopular,
-    moviesTopRated: moviesTopRated,
-    tvAiringToday: tvAiringToday,
-    tvPopular: tvPopular,
-    tvTopRated: tvTopRated
+    moviesPopular:    moviesPopular,
+    moviesTopRated:   moviesTopRated,
+    tvAiringToday:    tvAiringToday,
+    tvPopular:        tvPopular,
+    tvTopRated:       tvTopRated
   };
 })();
