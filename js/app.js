@@ -260,16 +260,64 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
     return section;
   }
 
-  async function setHeroContent(items) {
-    if (!items.length) return;
-    var f = items[0];
-    var k = _storeItem(f);
-    var heroType = currentTab === 'tv' ? 'tv' : 'movie';
-    document.getElementById('heroImage').style.backgroundImage = 'url(\'' + (f.poster_path ? TMDB.IMG + f.poster_path : '') + '\')';
-    document.getElementById('heroTitle').textContent       = f.title || f.name || 'Featured';
-    document.getElementById('heroDescription').textContent = f.overview ? f.overview.substring(0, 150) + '…' : 'Stream now';
-    document.getElementById('heroPlayBtn').onclick = function() { window.openPlayerModal(k, heroType); };
+async function setHeroContent(items) {
+  if (!items || !items.length) return;
+
+  const f = items[0];
+  const k = _storeItem(f);
+
+  const heroType =
+    currentTab === 'tv' ? 'tv' :
+    currentTab === 'anime' ? 'anime' :
+    'movie';
+
+  const heroImage = document.getElementById('heroImage');
+  const heroTitle = document.getElementById('heroTitle');
+  const heroDescription = document.getElementById('heroDescription');
+  const heroPlayBtn = document.getElementById('heroPlayBtn');
+
+  // Prefer backdrop over poster
+  const imagePath =
+    f.backdrop_path ||
+    f.poster_path ||
+    '';
+
+  // Set image safely
+  if (imagePath) {
+    heroImage.style.backgroundImage =
+      `url('${TMDB.IMG_ORIGINAL || TMDB.IMG}${imagePath}')`;
+  } else {
+    heroImage.style.backgroundImage = 'none';
   }
+
+  // Title
+  heroTitle.textContent =
+    f.title ||
+    f.name ||
+    f.original_title ||
+    'Featured';
+
+  // Description
+  let overview =
+    f.overview ||
+    'Watch now on KTV';
+
+  if (overview.length > 180) {
+    overview = overview.substring(0, 180) + '...';
+  }
+
+  heroDescription.textContent = overview;
+
+  // Optional animation refresh
+  heroImage.classList.remove('hero-fade');
+  void heroImage.offsetWidth;
+  heroImage.classList.add('hero-fade');
+
+  // Play button
+  heroPlayBtn.onclick = () => {
+    window.openPlayerModal(k, heroType);
+  };
+}
 
   var sortByDate = function(arr) {
     return arr.slice().sort(function(a, b) {
