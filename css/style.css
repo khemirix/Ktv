@@ -329,3 +329,99 @@ html, body {
     transform: scale(1);
   }
 }
+#heroImage {
+  position: relative;
+  width: 100%;
+  height: 70vh;
+
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+/* REMOVE BLUR */
+#heroImage,
+#heroImage::before,
+#heroImage::after {
+  filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* DARK OVERLAY */
+#heroImage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+
+  background:
+    linear-gradient(
+      to top,
+      rgba(0,0,0,0.95) 0%,
+      rgba(0,0,0,0.5) 45%,
+      rgba(0,0,0,0.2) 100%
+    );
+}
+
+/* CONTENT */
+.hero-content {
+  position: absolute;
+  left: 60px;
+  bottom: 60px;
+  z-index: 2;
+
+  max-width: 700px;
+}
+
+/* TITLE */
+#heroTitle {
+  font-size: 58px;
+  font-weight: 800;
+  line-height: 1.05;
+
+  color: white;
+
+  margin-bottom: 20px;
+
+  text-shadow:
+    0 2px 12px rgba(0,0,0,.8);
+}
+
+/* DESCRIPTION */
+#heroDescription {
+  font-size: 18px;
+  line-height: 1.7;
+
+  color: rgba(255,255,255,.9);
+
+  max-width: 650px;
+
+  text-shadow:
+    0 2px 8px rgba(0,0,0,.8);
+}
+
+/* BUTTON */
+#heroPlayBtn {
+  margin-top: 25px;
+
+  border: none;
+  border-radius: 12px;
+
+  padding: 14px 30px;
+
+  font-size: 17px;
+  font-weight: 700;
+
+  cursor: pointer;
+
+  background: white;
+  color: black;
+
+  transition: .2s;
+}
+
+#heroPlayBtn:hover {
+  transform: scale(1.05);
+}

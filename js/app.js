@@ -266,54 +266,29 @@ async function setHeroContent(items) {
   const f = items[0];
   const k = _storeItem(f);
 
-  const heroType =
-    currentTab === 'tv' ? 'tv' :
-    currentTab === 'anime' ? 'anime' :
-    'movie';
+  const heroType = currentTab === 'tv' ? 'tv' : 'movie';
 
   const heroImage = document.getElementById('heroImage');
   const heroTitle = document.getElementById('heroTitle');
   const heroDescription = document.getElementById('heroDescription');
   const heroPlayBtn = document.getElementById('heroPlayBtn');
 
-  // Prefer backdrop over poster
-  const imagePath =
-    f.backdrop_path ||
-    f.poster_path ||
-    '';
+  // USE BACKDROP ONLY
+  const bg = f.backdrop_path
+    ? `https://image.tmdb.org/t/p/original${f.backdrop_path}`
+    : '';
 
-  // Set image safely
-  if (imagePath) {
-    heroImage.style.backgroundImage =
-      `url('${TMDB.IMG_ORIGINAL || TMDB.IMG}${imagePath}')`;
-  } else {
-    heroImage.style.backgroundImage = 'none';
-  }
+  heroImage.style.backgroundImage = bg ? `url("${bg}")` : 'none';
 
-  // Title
   heroTitle.textContent =
     f.title ||
     f.name ||
-    f.original_title ||
     'Featured';
 
-  // Description
-  let overview =
+  heroDescription.textContent =
     f.overview ||
-    'Watch now on KTV';
+    'Watch now';
 
-  if (overview.length > 180) {
-    overview = overview.substring(0, 180) + '...';
-  }
-
-  heroDescription.textContent = overview;
-
-  // Optional animation refresh
-  heroImage.classList.remove('hero-fade');
-  void heroImage.offsetWidth;
-  heroImage.classList.add('hero-fade');
-
-  // Play button
   heroPlayBtn.onclick = () => {
     window.openPlayerModal(k, heroType);
   };
