@@ -504,37 +504,4 @@ html, body {
     }
     .btn-hero-info:hover { background: rgba(109,109,110,0.45); }
  
-    /* Progress dots */
-    .hero-dots {
-      position: absolute;
-      bottom: 1.8rem;
-      left: 3.5rem;
-      z-index: 3;
-      display: flex;
-      gap: 0.45rem;
-      align-items: center;
-    }
-    .hero-dot-btn {
-      width: 28px; height: 3px;
-      border-radius: 2px;
-      background: rgba(255,255,255,0.3);
-      border: none; cursor: pointer;
-      padding: 0;
-      transition: background 0.3s, width 0.3s;
-    }
-    .hero-dot-btn.active {
-      background: #e50914;
-      width: 48px;
-    }
- 
-    /* Progress bar at bottom of hero */
-    .hero-progress {
-      position: absolute;
-      bottom: 0; left: 0;
-      height: 2px;
-      background: #e50914;
-      z-index: 3;
-      width: 0%;
-      transition: width linear;
-    }
- 
+   
