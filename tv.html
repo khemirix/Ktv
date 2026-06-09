@@ -7,7 +7,6 @@
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link rel="stylesheet" href="css/style.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.7/hls.min.js"></script>
 <style>
   .live-badge {
     display: inline-flex;
@@ -28,13 +27,11 @@
     animation: blink 1.2s ease-in-out infinite;
   }
   @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
-
   .tv-hero {
     padding: 90px 0 40px;
     background: linear-gradient(180deg, rgba(229,9,20,0.08) 0%, transparent 100%);
     border-bottom: 1px solid rgba(255,255,255,0.07);
   }
-
   .category-filters {
     display: flex;
     gap: 8px;
@@ -54,7 +51,6 @@
   }
   .cat-btn:hover { border-color: rgba(255,255,255,0.4); color: #fff; }
   .cat-btn.active { background: #e50914; border-color: #e50914; color: #fff; }
-
   .channel-card {
     background: #1a1a1a;
     border-radius: 8px;
@@ -70,7 +66,6 @@
     border-color: rgba(229,9,20,0.4);
   }
   .channel-card:hover .card-play-overlay { opacity: 1; }
-
   .channel-poster {
     aspect-ratio: 16/9;
     background: #111;
@@ -87,51 +82,24 @@
     transition: transform 0.3s;
   }
   .channel-card:hover .channel-poster img { transform: scale(1.08); }
-
   .card-play-overlay {
-    position: absolute;
-    inset: 0;
+    position: absolute; inset: 0;
     background: rgba(0,0,0,0.55);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    transition: opacity 0.2s;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity 0.2s;
   }
   .card-play-overlay i { font-size: 2.5rem; color: #fff; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.7)); }
-
   .card-live-tag {
-    position: absolute;
-    top: 8px; left: 8px;
-    font-size: 0.55rem;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    background: #e50914;
-    color: #fff;
-    padding: 2px 6px;
-    border-radius: 3px;
+    position: absolute; top: 8px; left: 8px;
+    font-size: 0.55rem; font-weight: 700; letter-spacing: 0.1em;
+    background: #e50914; color: #fff; padding: 2px 6px; border-radius: 3px;
   }
-
-  .channel-info {
-    padding: 10px 12px;
-  }
+  .channel-info { padding: 10px 12px; }
   .channel-name {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #fff;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    margin-bottom: 3px;
+    font-size: 0.85rem; font-weight: 600; color: #fff;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px;
   }
-  .channel-cat {
-    font-size: 0.68rem;
-    color: rgba(255,255,255,0.4);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-  }
-
-  /* PLAYER MODAL */
+  .channel-cat { font-size: 0.68rem; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.08em; }
   .tv-player-modal .modal-content {
     background: #0a0a0a;
     border: 1px solid rgba(255,255,255,0.08);
@@ -145,32 +113,21 @@
   }
   .modal-channel-logo {
     width: 32px; height: 32px;
-    background: #1a1a1a;
-    border-radius: 6px;
+    background: #1a1a1a; border-radius: 6px;
     display: flex; align-items: center; justify-content: center;
     overflow: hidden; flex-shrink: 0;
   }
   .modal-channel-logo img { width: 26px; height: 26px; object-fit: contain; }
   .modal-channel-name { font-size: 0.95rem; font-weight: 700; color: #fff; }
-
   .player-status {
-    font-size: 0.6rem;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    padding: 3px 8px;
-    border-radius: 3px;
+    font-size: 0.6rem; font-weight: 700; letter-spacing: 0.1em;
+    padding: 3px 8px; border-radius: 3px;
   }
   .player-status.loading { background: rgba(255,193,7,0.15); color: #ffc107; }
   .player-status.playing { background: rgba(25,135,84,0.15); color: #198754; }
   .player-status.error { background: rgba(229,9,20,0.15); color: #e50914; }
-
-  .video-container {
-    position: relative;
-    background: #000;
-    aspect-ratio: 16/9;
-  }
+  .video-container { position: relative; background: #000; aspect-ratio: 16/9; }
   .video-container video { width: 100%; height: 100%; display: block; }
-
   .video-loader {
     position: absolute; inset: 0;
     background: rgba(0,0,0,0.88);
@@ -179,7 +136,7 @@
     transition: opacity 0.3s;
   }
   .video-loader.hidden { opacity: 0; pointer-events: none; }
-  .spinner-border-tv {
+  .spinner-tv {
     width: 36px; height: 36px;
     border: 3px solid rgba(255,255,255,0.1);
     border-top-color: #e50914;
@@ -188,18 +145,11 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
   .loader-text { font-size: 0.75rem; color: rgba(255,255,255,0.4); }
-
-  .no-channels {
-    color: rgba(255,255,255,0.3);
-    text-align: center;
-    padding: 60px 0;
-    font-size: 0.9rem;
-  }
+  .no-channels { color: rgba(255,255,255,0.3); text-align: center; padding: 60px 0; font-size: 0.9rem; }
 </style>
 </head>
 <body>
 
-<!-- Navbar (matches your index.html exactly) -->
 <nav class="navbar navbar-dark bg-dark fixed-top">
   <div class="container-fluid d-flex justify-content-between align-items-center">
     <span class="navbar-brand mb-0 h1">
@@ -217,7 +167,6 @@
   </div>
 </nav>
 
-<!-- Hero -->
 <div class="tv-hero">
   <div class="container-fluid px-4">
     <div class="d-flex align-items-center gap-3 mb-2">
@@ -229,7 +178,6 @@
   </div>
 </div>
 
-<!-- Channels Grid -->
 <div class="container-fluid px-4 py-4">
   <div class="row g-3" id="channelsGrid"></div>
 </div>
@@ -251,7 +199,7 @@
       <div class="video-container">
         <video id="tvVideo" controls playsinline></video>
         <div class="video-loader" id="videoLoader">
-          <div class="spinner-border-tv"></div>
+          <div class="spinner-tv"></div>
           <div class="loader-text" id="loaderText">Connecting to stream...</div>
         </div>
       </div>
@@ -261,11 +209,13 @@
 
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.7/dist/hls.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js"></script>
 <script>
   var PROXY = 'https://t-ahg3.onrender.com';
   var channels = [];
   var activeCategory = 'All';
-  var currentHls = null;
+  var currentPlayer = null;
   var playerModal = null;
 
   window.addEventListener('DOMContentLoaded', function() {
@@ -362,7 +312,10 @@
   }
 
   function stopStream() {
-    if (currentHls) { currentHls.destroy(); currentHls = null; }
+    if (currentPlayer) {
+      try { currentPlayer.destroy(); } catch(e) {}
+      currentPlayer = null;
+    }
     var video = document.getElementById('tvVideo');
     video.pause();
     video.src = '';
@@ -372,36 +325,71 @@
     var proxyUrl = PROXY + '/fetch?url=' + encodeURIComponent(streamUrl);
     var video = document.getElementById('tvVideo');
 
-    if (currentHls) { currentHls.destroy(); currentHls = null; }
+    stopStream();
 
     video.onplaying = function() { setStatus('playing'); showLoader(false); };
     video.onwaiting = function() { showLoader(true, 'Buffering...'); };
     video.onerror = function() { setStatus('error'); showLoader(true, 'Stream error. Try another channel.'); };
 
-    if (Hls.isSupported()) {
-      currentHls = new Hls({ enableWorker: true, lowLatencyMode: true, backBufferLength: 30 });
+    var isTS = streamUrl.indexOf('.ts') !== -1;
+    var isM3U8 = streamUrl.indexOf('.m3u8') !== -1;
 
-      currentHls.on(Hls.Events.MANIFEST_PARSED, function() {
+    if (isTS && mpegts.isSupported()) {
+      // Raw MPEG-TS stream — use mpegts.js
+      currentPlayer = mpegts.createPlayer({
+        type: 'mpegts',
+        isLive: true,
+        url: proxyUrl
+      }, {
+        enableWorker: true,
+        liveBufferLatencyChasing: true,
+        liveSync: true
+      });
+      currentPlayer.attachMediaElement(video);
+      currentPlayer.load();
+      currentPlayer.play().catch(function() {});
+
+    } else if (isM3U8 && Hls.isSupported()) {
+      // HLS stream — use hls.js
+      currentPlayer = new Hls({ enableWorker: true, lowLatencyMode: true });
+      currentPlayer.loadSource(proxyUrl);
+      currentPlayer.attachMedia(video);
+      currentPlayer.on(Hls.Events.MANIFEST_PARSED, function() {
         video.play().catch(function() {});
       });
-
-      currentHls.on(Hls.Events.ERROR, function(e, data) {
+      currentPlayer.on(Hls.Events.ERROR, function(e, data) {
         if (data.fatal) {
-          currentHls.destroy(); currentHls = null;
-          video.src = proxyUrl;
-          video.play().catch(function() {});
+          setStatus('error');
+          showLoader(true, 'Stream error.');
         }
       });
 
-      currentHls.loadSource(proxyUrl);
-      currentHls.attachMedia(video);
-
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = proxyUrl;
-      video.play().catch(function() {});
     } else {
-      video.src = proxyUrl;
-      video.play().catch(function() {});
+      // Unknown or no extension — try mpegts.js first, fallback to hls.js
+      if (mpegts.isSupported()) {
+        currentPlayer = mpegts.createPlayer({
+          type: 'mpegts',
+          isLive: true,
+          url: proxyUrl
+        }, {
+          enableWorker: true,
+          liveBufferLatencyChasing: true,
+          liveSync: true
+        });
+        currentPlayer.attachMediaElement(video);
+        currentPlayer.load();
+        currentPlayer.play().catch(function() {});
+      } else if (Hls.isSupported()) {
+        currentPlayer = new Hls({ enableWorker: true, lowLatencyMode: true });
+        currentPlayer.loadSource(proxyUrl);
+        currentPlayer.attachMedia(video);
+        currentPlayer.on(Hls.Events.MANIFEST_PARSED, function() {
+          video.play().catch(function() {});
+        });
+      } else {
+        video.src = proxyUrl;
+        video.play().catch(function() {});
+      }
     }
   }
 </script>
