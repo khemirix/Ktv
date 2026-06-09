@@ -1,0 +1,16 @@
+[
+  {
+    "id": 1,
+    "name": "beIN Sport 1",
+    "category": "Sports",
+    "logo": "https://link-to-channel-logo.png",
+    "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1243979.ts"
+  },
+  {
+    "id": 2,
+    "name": "CNN",
+    "category": "News",
+    "logo": "https://link-to-cnn-logo.png",
+    "stream": "http://77.137.40.221:8000/play/tjf4"
+  }
+]
