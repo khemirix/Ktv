@@ -5,5 +5,12 @@
     "category": "Sports",
     "logo": "https://images.seeklogo.com/logo-png/48/2/bein-sports-1-logo-png_seeklogo-481583.png",
     "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1243979.ts"
-  }
+  },
+    {
+        "id": 2,
+        "name": "beIN Sport 1 SD",
+        "category": "Sports",
+        "logo": "https://images.seeklogo.com/logo-png/48/2/bein-sports-2-logo-png_seeklogo-481584.png",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1243988.ts"
+    }
 ]
