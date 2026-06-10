@@ -1,16 +1,184 @@
 [
-  {
-    "id": 1,
-    "name": "beIN Sport 1",
-    "category": "Sports",
-    "logo": "https://images.seeklogo.com/logo-png/48/2/bein-sports-1-logo-png_seeklogo-481583.png",
-    "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1243979.ts"
-  },
     {
-        "id": 2,
-        "name": "beIN Sport 1 SD",
+        "id": 1,
+        "name": "beIN Sport 1 HD",
         "category": "Sports",
-        "logo": "https://images.seeklogo.com/logo-png/48/2/bein-sports-2-logo-png_seeklogo-481584.png",
-        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1243988.ts"
+        "logo": "./img/bein/be_in_mena_sports_01_hd.png",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1243979.ts"
+    },
+    {
+        "id": 3,
+        "name": "beIN Sport 2 HD",
+        "category": "Sports",
+        "logo": "./img/bein/be_in_mena_sports_02_hd.png",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/333787.ts"
+    },
+    {
+        "id": 4,
+        "name": "beIN Sport 3 HD",
+        "category": "Sports",
+        "logo": "./img/bein/be_in_mena_sports_03_hd.png",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1297578.ts"
+    },
+    {
+        "id": 5,
+        "name": "beIN Sports 5",
+        "category": "Sports",
+        "logo": "./img/bein/be_in_mena_sports_05_hd.png",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1243995.ts"
+    },
+    {
+        "id": 6,
+        "name": "beIN Sports 6",
+        "category": "Sports",
+        "logo": "./img/bein/be_in_mena_sports_06_hd.png",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1298332.ts"
+    },
+    {
+        "id": 7,
+        "name": "beIN Sports 7",
+        "category": "Sports",
+        "logo": "./img/bein/be_in_mena_sports_07_hd.png",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1243999.ts"
+    },
+    {
+        "id": 8,
+        "name": "beIN Sports 8",
+        "category": "Sports",
+        "logo": "./img/bein/be_in_mena_sports_08_hd.png",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1282338.ts"
+    },
+    {
+        "id": 9,
+        "name": "beIN Sports News",
+        "category": "Sports",
+        "logo": "./img/bein/be_in_mena_sports_09_hd.png",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1245128.ts"
+    },
+    {
+        "id": 10,
+        "name": "beIN Sports 10",
+        "category": "Sports",
+        "logo": "./img/bein/be_in_mena_sports_09_hd.png",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1298584.ts"
+    },
+    {
+        "id": 11,
+        "name": "Tunisia Nat 1",
+        "category": "Tunisia",
+        "logo": "./img/bein/watania1.png",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1299388.ts"
+    },
+    {
+        "id": 12,
+        "name": "Tunisia Nat 2",
+        "category": "Tunisia",
+        "logo": "./img/bein/watania2.png",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1293225.ts"
+    },
+    {
+        "id": 13,
+        "name": "Nessma TV",
+        "category": "Tunisia",
+        "logo": "https://upload.wikimedia.org/wikipedia/fr/3/3a/Nessma.jpg",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1293227.ts"
+    },
+    {
+        "id": 14,
+        "name": "Al Janoubia TV (TN)",
+        "category": "Sports",
+        "logo": "https://upload.wikimedia.org/wikipedia/fr/6/62/Logo_Al_Janoubiya_TV.png",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1126724.ts"
+    },
+    {
+        "id": 15,
+        "name": "Attassia TV",
+        "category": "Tunisia",
+        "logo": "https://upload.wikimedia.org/wikipedia/fr/6/64/Attessia_TV.png",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1269165.ts"
+    },
+    {
+        "id": 16,
+        "name": "Carthage+",
+        "category": "Tunisia",
+        "logo": "https://upload.wikimedia.org/wikipedia/fr/a/af/Logo-carthageplus.png",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1293063.ts"
+    },
+    {
+        "id": 17,
+        "name": "Elhiwar Ettounsi",
+        "category": "Tunisia",
+        "logo": "https://tanitweb.com/wp-content/uploads/2021/06/hiwar-attounsiya2-Converted.png",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1007172.ts"
+    },
+    {
+        "id": 18,
+        "name": "Hannibal TV",
+        "category": "Tunisia",
+        "logo": "https://upload.wikimedia.org/wikipedia/fr/b/b9/Logo_Hannibal_TV.gif",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1007184.ts"
+    },
+    {
+        "id": 19,
+        "name": "M+ Tunisia",
+        "category": "Tunisia",
+        "logo": "https://upload.wikimedia.org/wikipedia/fr/thumb/f/fb/MTunisia.jpg/250px-MTunisia.jpg",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1240741.ts"
+    },
+    {
+        "id": 20,
+        "name": "AL MUSTAKILA TV (TN)",
+        "category": "Tunisia",
+        "logo": "https://upload.wikimedia.org/wikipedia/commons/b/b0/Almostaqila.jpg",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1232261.ts"
+    },
+    {
+        "id": 21,
+        "name": "Tounesna",
+        "category": "Tunisia",
+        "logo": "https://upload.wikimedia.org/wikipedia/commons/f/fc/Logo_tunisna_rogné.png",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1293221.ts"
+    },
+    {
+        "id": 22,
+        "name": "Alkass 1 HD",
+        "category": "Sports",
+        "logo": "https://upload.wikimedia.org/wikipedia/commons/9/93/شعار_قنوات_الكاس.jpg",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1243942.ts"
+    },
+    {
+        "id": 23,
+        "name": "Alkass 2 HD",
+        "category": "Sports",
+        "logo": "https://upload.wikimedia.org/wikipedia/commons/9/93/شعار_قنوات_الكاس.jpg",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1295823.ts"
+    },
+    {
+        "id": 24,
+        "name": "Alkass 3 HD",
+        "category": "Sports",
+        "logo": "https://upload.wikimedia.org/wikipedia/commons/9/93/شعار_قنوات_الكاس.jpg",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1291774.ts"
+    },
+    {
+        "id": 25,
+        "name": "Alkass 4 HD",
+        "category": "Sports",
+        "logo": "https://upload.wikimedia.org/wikipedia/commons/9/93/شعار_قنوات_الكاس.jpg",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1243945.ts"
+    },
+    {
+        "id": 26,
+        "name": "Alkass 5 HD",
+        "category": "Sports",
+        "logo": "https://upload.wikimedia.org/wikipedia/commons/9/93/شعار_قنوات_الكاس.jpg",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1259680.ts"
+    },
+    {
+        "id": 27,
+        "name": "National Geographic Abu Dhabi",
+        "category": "Documentary",
+        "logo": "./img/bein/Natgeo.png",
+        "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1293144.ts"
     }
 ]
