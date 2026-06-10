@@ -3,77 +3,77 @@
         "id": 1,
         "name": "beIN Sport 1 HD",
         "category": "Sports",
-        "logo": "./img/bein/be_in_mena_sports_01_hd.png",
+        "logo": "./css/img/bein/be_in_mena_sports_01_hd.png",
         "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1243979.ts"
     },
     {
         "id": 3,
         "name": "beIN Sport 2 HD",
         "category": "Sports",
-        "logo": "./img/bein/be_in_mena_sports_02_hd.png",
+        "logo": "./css/img/bein/be_in_mena_sports_02_hd.png",
         "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/333787.ts"
     },
     {
         "id": 4,
         "name": "beIN Sport 3 HD",
         "category": "Sports",
-        "logo": "./img/bein/be_in_mena_sports_03_hd.png",
+        "logo": "./css/img/bein/be_in_mena_sports_03_hd.png",
         "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1297578.ts"
     },
     {
         "id": 5,
         "name": "beIN Sports 5",
         "category": "Sports",
-        "logo": "./img/bein/be_in_mena_sports_05_hd.png",
+        "logo": "./css/img/bein/be_in_mena_sports_05_hd.png",
         "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1243995.ts"
     },
     {
         "id": 6,
         "name": "beIN Sports 6",
         "category": "Sports",
-        "logo": "./img/bein/be_in_mena_sports_06_hd.png",
+        "logo": "./css/img/bein/be_in_mena_sports_06_hd.png",
         "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1298332.ts"
     },
     {
         "id": 7,
         "name": "beIN Sports 7",
         "category": "Sports",
-        "logo": "./img/bein/be_in_mena_sports_07_hd.png",
+        "logo": "./css/img/bein/be_in_mena_sports_07_hd.png",
         "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1243999.ts"
     },
     {
         "id": 8,
         "name": "beIN Sports 8",
         "category": "Sports",
-        "logo": "./img/bein/be_in_mena_sports_08_hd.png",
+        "logo": "./css/img/bein/be_in_mena_sports_08_hd.png",
         "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1282338.ts"
     },
     {
         "id": 9,
         "name": "beIN Sports News",
         "category": "Sports",
-        "logo": "./img/bein/be_in_mena_sports_09_hd.png",
+        "logo": "./css/img/bein/be_in_mena_sports_09_hd.png",
         "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1245128.ts"
     },
     {
         "id": 10,
         "name": "beIN Sports 10",
         "category": "Sports",
-        "logo": "./img/bein/be_in_mena_sports_09_hd.png",
+        "logo": "./css/img/bein/be_in_mena_sports_09_hd.png",
         "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1298584.ts"
     },
     {
         "id": 11,
         "name": "Tunisia Nat 1",
         "category": "Tunisia",
-        "logo": "./img/bein/watania1.png",
+        "logo": "./css/img/bein/watania1.png",
         "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1299388.ts"
     },
     {
         "id": 12,
         "name": "Tunisia Nat 2",
         "category": "Tunisia",
-        "logo": "./img/bein/watania2.png",
+        "logo": "./css/img/bein/watania2.png",
         "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1293225.ts"
     },
     {
@@ -178,7 +178,7 @@
         "id": 27,
         "name": "National Geographic Abu Dhabi",
         "category": "Documentary",
-        "logo": "./img/bein/Natgeo.png",
+        "logo": "./css/img/bein/Natgeo.png",
         "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1293144.ts"
     }
 ]
