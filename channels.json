@@ -180,5 +180,13 @@
         "category": "Documentary",
         "logo": "./css/img/bein/Natgeo.png",
         "stream": "http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1293144.ts"
+    },
+    {
+      "id": 28,
+      "name": "test",
+      "category":"test",
+      "logo":"",
+      "stream":"http://xplatinmedia.com:8080/@JKDpros/2jLwS6gtxZ2a/79055"
+
     }
 ]
