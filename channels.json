@@ -1,4 +1,9 @@
 [
+    {"id":0,
+"name":"bein Max 1",
+"category":"Sports",
+"logo":"https://upload.wikimedia.org/wikipedia/commons/9/9c/The_new_logo_of_beIN_MAX_1_at_2017.png",
+"stream":"http://wuvpqydg.g32sru.xyz:80/play/32vi318133/d7TMFGHGRDw/1300028.ts"},
     {
         "id": 1,
         "name": "beIN Sport 1 HD",
