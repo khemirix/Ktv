@@ -100,6 +100,15 @@ var TMDB = (function(){
     } catch(e) { return null; }
   }
 
+  async function getImdbId(type, tmdbId) {
+    if (!tmdbId) return null;
+    var path = (type === 'tv' ? '/tv/' : '/movie/') + encodeURIComponent(tmdbId) + '/external_ids';
+    try {
+      var data = await fetchJSON(path);
+      return (data && data.imdb_id) || null;
+    } catch(e) { return null; }
+  }
+
   async function getSeason(tmdbTvId, seasonNum) {
     if (!tmdbTvId || !seasonNum) return { episodes: [] };
     try {
@@ -136,6 +145,7 @@ var TMDB = (function(){
     getById: getById,
     getEpisode: getEpisode,
     getSeason:  getSeason,
+    getImdbId:  getImdbId,
     moviesNowPlaying: moviesNowPlaying,
     moviesPopular:    moviesPopular,
     moviesTopRated:   moviesTopRated,

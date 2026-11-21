@@ -15,6 +15,8 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
 
   // current TV show context for the episode panel
   var _tvContext = null; // { title, year, tmdbId, seasons: [{season_number, episode_count}] }
+  var _subs      = null; // active subtitle controller
+  var _imdbCache = {};   // tmdbId -> imdbId
 
   // ── TV Remote ────────────────────────────────────────────────────
   if (window.IS_TV_APP) {
@@ -46,7 +48,11 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
   function closePlayer() {
     var modal = document.getElementById('playerModal');
     var video = document.getElementById('playerVideo');
-    if (video) { video.pause(); video.src = ''; }
+    if (video) {
+      video._subToken = (video._subToken || 0) + 1;
+      video.pause(); video.src = '';
+    }
+    if (_subs) { _subs.destroy(); _subs = null; }
     modal.classList.remove('active');
     document.body.style.overflow = '';
     _tvContext = null;
@@ -64,14 +70,50 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
     document.body.style.overflow = 'hidden';
   }
 
+  function setSubtitleButton(status, name) {
+    var btn   = document.getElementById('subtitleToggle');
+    var label = document.getElementById('subtitleToggleLabel');
+    if (!btn || !label) return;
+    var on = status === 'on';
+    btn.disabled = (status === 'loading' || status === 'none');
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    label.textContent = status === 'loading' ? 'Subtitles: Loading…'
+      : status === 'none' ? 'Subtitles: unavailable'
+      : on ? 'Subtitles: On' : 'Subtitles: Off';
+    btn.title = name || (on ? 'Tap to turn Arabic subtitles off' : 'Tap to turn Arabic subtitles on');
+  }
+
+  async function subtitleMeta(opts) {
+    opts = opts || {};
+    var meta = {
+      imdbId:  opts.imdbId || null,
+      type:    opts.type || 'movie',
+      season:  opts.season,
+      episode: opts.episode
+    };
+    if (!meta.imdbId && opts.tmdbId) {
+      var cacheKey = meta.type + ':' + opts.tmdbId;
+      if (!_imdbCache[cacheKey]) {
+        _imdbCache[cacheKey] = await TMDB.getImdbId(meta.type, opts.tmdbId);
+      }
+      meta.imdbId = _imdbCache[cacheKey];
+    }
+    return meta;
+  }
+
   // ── Load a video URL into the player ────────────────────────────
-  function playLinks(links, title) {
+  function playLinks(links, title, opts) {
     var video       = document.getElementById('playerVideo');
     var qualityList = document.getElementById('qualityList');
     var titleEl     = document.getElementById('playerTitle');
 
     titleEl.textContent = title || '';
     setPlayerState('video');
+
+    if (_subs) { _subs.destroy(); _subs = null; }
+    var token = (video._subToken || 0) + 1;
+    video._subToken = token;
+    setSubtitleButton('loading');
 
     qualityList.innerHTML = '';
     links.forEach(function(link, i) {
@@ -80,6 +122,7 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
       btn.textContent = link.quality || ('Link ' + (i + 1));
       btn.addEventListener('click', function() {
         video.src = link.url;
+        if (_subs) _subs.resync();
         video.play();
         qualityList.querySelectorAll('.quality-btn').forEach(function(b) { b.classList.remove('active'); });
         btn.classList.add('active');
@@ -88,6 +131,10 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
     });
 
     video.src = links[0].url;
+    subtitleMeta(opts).then(function(meta) {
+      if (video._subToken !== token) return;
+      _subs = Subtitles.attach(video, meta, setSubtitleButton);
+    });
     video.play().catch(function(){});
   }
 
@@ -163,7 +210,9 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
         season:  season,
         episode: episode
       });
-      playLinks(links, label);
+      playLinks(links, label, {
+        type: 'tv', tmdbId: _tvContext.tmdbId, season: season, episode: episode
+      });
     } catch(err) {
       setPlayerState('error');
       document.getElementById('playerErrorMsg').textContent = err.message || 'Not found';
@@ -198,7 +247,9 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
         // Resolve S1E1
         var links = await Resolver.resolveEpisode({ title: title, year: year, season: 1, episode: 1 });
         var epLabel = title + ' · S01E01';
-        playLinks(links, epLabel);
+        playLinks(links, epLabel, {
+          type: 'tv', tmdbId: item.id, season: 1, episode: 1
+        });
 
         // Mark first episode active once panel loads
         setTimeout(function() {
@@ -215,13 +266,18 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
       document.getElementById('episodePanel').hidden = true;
       try {
         var links = await Resolver.resolveMovie({ title: title, year: year });
-        playLinks(links, title);
+        playLinks(links, title, { type: 'movie', tmdbId: item.id });
       } catch(err) {
         setPlayerState('error');
         document.getElementById('playerErrorMsg').textContent = err.message || 'Not found';
       }
     }
   };
+
+  document.getElementById('subtitleToggle').addEventListener('click', function() {
+    if (!_subs) return;
+    _subs.setEnabled(this.getAttribute('aria-pressed') !== 'true');
+  });
 
   document.getElementById('playerClose').addEventListener('click', closePlayer);
   document.getElementById('playerModal').addEventListener('click', function(e) {

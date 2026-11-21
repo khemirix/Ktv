@@ -100,6 +100,30 @@
     .quality-btn:hover { background: rgba(255,255,255,.13); color: #fff; }
     .quality-btn.active { background: #e50914; border-color: #e50914; color: #fff; }
 
+    /* Arabic subtitles */
+    .subtitle-row { display: flex; align-items: center; gap: .5rem; margin-top: .55rem; }
+    .subtitle-toggle {
+      background: rgba(255,255,255,.07);
+      border: 1px solid rgba(255,255,255,.13);
+      color: rgba(255,255,255,.65);
+      border-radius: 5px;
+      padding: .25rem .7rem;
+      font-size: .73rem;
+      cursor: pointer;
+      transition: all .18s;
+      font-family: sans-serif;
+    }
+    .subtitle-toggle:hover:not(:disabled) { background: rgba(255,255,255,.13); color: #fff; }
+    .subtitle-toggle[aria-pressed="true"] { background: #1a7f37; border-color: #1a7f37; color: #fff; }
+    .subtitle-toggle:disabled { opacity: .5; cursor: default; }
+    #playerVideo::cue {
+      direction: rtl;
+      text-align: right;
+      font-size: 1.15rem;
+      background: rgba(0,0,0,.65);
+      color: #fff;
+    }
+
     /* Error state */
     #playerStateError { text-align: center; color: #fff; font-family: sans-serif; }
     .error-icon { font-size: 2.2rem; margin-bottom: .6rem; }
@@ -275,6 +299,12 @@
         <div id="playerStateVideo" hidden>
           <div id="playerTitle"></div>
           <video id="playerVideo" controls playsinline></video>
+          <div class="subtitle-row">
+            <button id="subtitleToggle" class="subtitle-toggle" type="button" aria-pressed="true" disabled>
+              <i class="fas fa-closed-captioning"></i>
+              <span id="subtitleToggleLabel">Subtitles: Loading…</span>
+            </button>
+          </div>
           <div id="qualityList"></div>
         </div>
 
@@ -300,6 +330,7 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="js/tmdb.js"></script>
   <script src="js/resolver.js"></script>
+  <script src="js/subtitles.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

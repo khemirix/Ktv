@@ -248,6 +248,7 @@ var Resolver = (function () {
     resolve: resolve,
     resolveMovie: resolveMovie,
     resolveEpisode: resolveEpisode,
+    getApiBase: function () { return api(); },
     setApiBase: function (v) { API_BASE = v; }
   };
 })();
