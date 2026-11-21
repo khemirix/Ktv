@@ -16,6 +16,7 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
   // current TV show context for the episode panel
   var _tvContext = null; // { title, year, tmdbId, seasons: [{season_number, episode_count}] }
   var _subs      = null; // active subtitle controller
+  var _player    = null; // active MediaPlayer controller
   var _imdbCache = {};   // tmdbId -> imdbId
 
   // ── TV Remote ────────────────────────────────────────────────────
@@ -48,10 +49,8 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
   function closePlayer() {
     var modal = document.getElementById('playerModal');
     var video = document.getElementById('playerVideo');
-    if (video) {
-      video._subToken = (video._subToken || 0) + 1;
-      video.pause(); video.src = '';
-    }
+    if (video) video._subToken = (video._subToken || 0) + 1;
+    if (_player) { _player.destroy(); _player = null; }
     if (_subs) { _subs.destroy(); _subs = null; }
     closeSettingsMenu();
     modal.classList.remove('active');
@@ -64,6 +63,12 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
     document.getElementById('playerStateLoading').hidden = state !== 'loading';
     document.getElementById('playerStateVideo').hidden   = state !== 'video';
     document.getElementById('playerStateError').hidden   = state !== 'error';
+  }
+
+  function showPlaybackError(message) {
+    var el = document.getElementById('playerErrorMsg');
+    if (el) el.textContent = message;
+    setPlayerState('error');
   }
 
   function openModal() {
@@ -163,6 +168,24 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
     setSubtitleButton('loading');
     setQualityBadge(links[0] && links[0].quality ? links[0].quality : 'Auto');
 
+    // The resolver returns a mix of direct MP4 ("ORG") and HLS .m3u8 links.
+    // Keep one direct URL as a safety net if an HLS playlist fails.
+    var fallbackUrl = '';
+    for (var i = 0; i < links.length; i++) {
+      if (!MediaPlayer.isHls(links[i].url)) { fallbackUrl = links[i].url; break; }
+    }
+
+    if (_player) _player.destroy();
+    _player = MediaPlayer.create(video, {
+      onError: function (message, fatal) {
+        if (fatal) showPlaybackError(message);
+        else console.warn('[Ktv player] ' + message);
+      },
+      onAutoplayBlocked: function () {
+        // Native controls stay visible; the user can tap play manually.
+      }
+    });
+
     qualityList.innerHTML = '';
     links.forEach(function(link, i) {
       var label = link.quality || ('Link ' + (i + 1));
@@ -170,9 +193,10 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
       btn.className = 'quality-btn' + (i === 0 ? ' active' : '');
       btn.textContent = label;
       btn.addEventListener('click', function() {
-        video.src = link.url;
+        _player.load(link.url, {
+          fallbackUrl: (link.url === fallbackUrl) ? '' : fallbackUrl
+        });
         if (_subs) _subs.resync();
-        video.play();
         qualityList.querySelectorAll('.quality-btn').forEach(function(b) { b.classList.remove('active'); });
         btn.classList.add('active');
         setQualityBadge(label);
@@ -181,12 +205,14 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
       qualityList.appendChild(btn);
     });
 
-    video.src = links[0].url;
+    _player.load(links[0].url, {
+      fallbackUrl: (links[0].url === fallbackUrl) ? '' : fallbackUrl
+    });
+
     subtitleMeta(opts).then(function(meta) {
       if (video._subToken !== token) return;
       _subs = Subtitles.attach(video, meta, setSubtitleButton);
     });
-    video.play().catch(function(){});
   }
 
   // ── Episode panel ────────────────────────────────────────────────
