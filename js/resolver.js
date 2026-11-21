@@ -80,7 +80,7 @@ var Resolver = (function () {
       '/api/febbox/id?id=' + encodeURIComponent(showboxId) +
       '&type=' + encodeURIComponent(typeNum)
     );
-    if (!data || !data.febBoxId) throw new Error('Could not get Febbox share key');
+    if (!data || !data.febBoxId) throw new Error('This film is not available yet — please check another day');
     return data.febBoxId;
   }
 
