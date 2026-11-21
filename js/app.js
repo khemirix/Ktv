@@ -53,6 +53,7 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
       video.pause(); video.src = '';
     }
     if (_subs) { _subs.destroy(); _subs = null; }
+    closeSettingsMenu();
     modal.classList.remove('active');
     document.body.style.overflow = '';
     _tvContext = null;
@@ -71,16 +72,62 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
   }
 
   function setSubtitleButton(status, name) {
-    var btn   = document.getElementById('subtitleToggle');
-    var label = document.getElementById('subtitleToggleLabel');
-    if (!btn || !label) return;
-    var on = status === 'on';
-    btn.disabled = (status === 'loading' || status === 'none');
-    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-    label.textContent = status === 'loading' ? 'Subtitles: Loading…'
-      : status === 'none' ? 'Subtitles: unavailable'
-      : on ? 'Subtitles: On' : 'Subtitles: Off';
-    btn.title = name || (on ? 'Tap to turn Arabic subtitles off' : 'Tap to turn Arabic subtitles on');
+    var btn      = document.getElementById('subtitleToggle');
+    var menuBtn  = document.getElementById('menuSubtitleToggle');
+    var on       = status === 'on';
+    var disabled = (status === 'loading' || status === 'none');
+    var text     = status === 'loading' ? 'Arabic subtitles: Loading…'
+      : status === 'none' ? 'Arabic subtitles: unavailable'
+      : on ? 'Arabic subtitles: On' : 'Arabic subtitles: Off';
+
+    if (btn) {
+      btn.disabled = disabled;
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      btn.title = text;
+    }
+    if (menuBtn) {
+      menuBtn.disabled = disabled;
+      menuBtn.textContent = name ? text + ' · ' + name : text;
+    }
+  }
+
+  function setQualityBadge(text) {
+    var badge = document.getElementById('qualityBadge');
+    if (badge) badge.textContent = text || '—';
+  }
+
+  function closeSettingsMenu() {
+    var menu = document.getElementById('settingsMenu');
+    if (menu) menu.hidden = true;
+  }
+
+  // Subtitle look is stored locally so the choice survives reloads.
+  var SUB_STYLE_ID = 'ktvSubtitleStyle';
+  var SUB_SIZES = { small: '0.9rem', medium: '1.15rem', large: '1.45rem', xlarge: '1.8rem' };
+  var SUB_BGS = { none: 'transparent', dark: 'rgba(0,0,0,.65)', solid: '#000' };
+
+  function applySubtitleStyle() {
+    var size = localStorage.getItem('ktv_sub_size') || 'medium';
+    var bg   = localStorage.getItem('ktv_sub_bg') || 'dark';
+    if (!SUB_SIZES[size]) size = 'medium';
+    if (!SUB_BGS[bg]) bg = 'dark';
+
+    var style = document.getElementById(SUB_STYLE_ID);
+    if (!style) {
+      style = document.createElement('style');
+      style.id = SUB_STYLE_ID;
+      document.head.appendChild(style);
+    }
+    style.textContent =
+      '#playerVideo::cue { direction: rtl; text-align: right; color: #fff;' +
+      'font-size: ' + SUB_SIZES[size] + '; background: ' + SUB_BGS[bg] + '; }';
+
+    document.querySelectorAll('#subtitleSizeOptions .settings-option').forEach(function(b) {
+      b.classList.toggle('active', b.getAttribute('data-size') === size);
+    });
+    document.querySelectorAll('#subtitleBgOptions .settings-option').forEach(function(b) {
+      b.classList.toggle('active', b.getAttribute('data-bg') === bg);
+    });
   }
 
   async function subtitleMeta(opts) {
@@ -114,18 +161,22 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
     var token = (video._subToken || 0) + 1;
     video._subToken = token;
     setSubtitleButton('loading');
+    setQualityBadge(links[0] && links[0].quality ? links[0].quality : 'Auto');
 
     qualityList.innerHTML = '';
     links.forEach(function(link, i) {
+      var label = link.quality || ('Link ' + (i + 1));
       var btn = document.createElement('button');
       btn.className = 'quality-btn' + (i === 0 ? ' active' : '');
-      btn.textContent = link.quality || ('Link ' + (i + 1));
+      btn.textContent = label;
       btn.addEventListener('click', function() {
         video.src = link.url;
         if (_subs) _subs.resync();
         video.play();
         qualityList.querySelectorAll('.quality-btn').forEach(function(b) { b.classList.remove('active'); });
         btn.classList.add('active');
+        setQualityBadge(label);
+        closeSettingsMenu();
       });
       qualityList.appendChild(btn);
     });
@@ -274,17 +325,51 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
     }
   };
 
-  document.getElementById('subtitleToggle').addEventListener('click', function() {
+  function toggleSubtitles() {
     if (!_subs) return;
-    _subs.setEnabled(this.getAttribute('aria-pressed') !== 'true');
+    var btn = document.getElementById('subtitleToggle');
+    _subs.setEnabled(btn.getAttribute('aria-pressed') !== 'true');
+  }
+
+  document.getElementById('subtitleToggle').addEventListener('click', toggleSubtitles);
+  document.getElementById('menuSubtitleToggle').addEventListener('click', toggleSubtitles);
+
+  var settingsBtn = document.getElementById('playerSettingsBtn');
+  settingsBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    var menu = document.getElementById('settingsMenu');
+    menu.hidden = !menu.hidden;
   });
+  document.addEventListener('click', function(e) {
+    var menu = document.getElementById('settingsMenu');
+    if (!menu || menu.hidden) return;
+    if (menu.contains(e.target) || settingsBtn.contains(e.target)) return;
+    menu.hidden = true;
+  });
+
+  document.querySelectorAll('#subtitleSizeOptions .settings-option').forEach(function(b) {
+    b.addEventListener('click', function() {
+      localStorage.setItem('ktv_sub_size', b.getAttribute('data-size'));
+      applySubtitleStyle();
+    });
+  });
+  document.querySelectorAll('#subtitleBgOptions .settings-option').forEach(function(b) {
+    b.addEventListener('click', function() {
+      localStorage.setItem('ktv_sub_bg', b.getAttribute('data-bg'));
+      applySubtitleStyle();
+    });
+  });
+  applySubtitleStyle();
 
   document.getElementById('playerClose').addEventListener('click', closePlayer);
   document.getElementById('playerModal').addEventListener('click', function(e) {
     if (e.target === this) closePlayer();
   });
   window.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') closePlayer();
+    if (e.key !== 'Escape') return;
+    var menu = document.getElementById('settingsMenu');
+    if (menu && !menu.hidden) { menu.hidden = true; return; }
+    closePlayer();
   });
 
   // ── Cards ────────────────────────────────────────────────────────
