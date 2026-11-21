@@ -1,10 +1,8 @@
 var Resolver = (function () {
   var API_BASE = 'https://showbox-api-1.onrender.com';
   var TIMEOUT_MS = 20000;
-  var _cookie = '';
 
   function api() { return API_BASE.replace(/\/$/, ''); }
-  function hdrs() { return _cookie ? { 'x-auth-cookie': _cookie } : {}; }
 
   // ── Fetch with timeout and useful errors ─────────────────────────
   async function fetchJSON(path) {
@@ -15,7 +13,6 @@ var Resolver = (function () {
     var res;
     try {
       res = await fetch(api() + path, {
-        headers: hdrs(),
         signal: controller ? controller.signal : undefined
       });
     } catch (err) {
@@ -112,7 +109,7 @@ var Resolver = (function () {
     if (links && links.error) throw new Error(links.error);
     if (!Array.isArray(links) || !links.length) {
       throw new Error(
-        'No stream links from Febbox — the API needs a valid Febbox login cookie (FEBBOX_UI_COOKIE)'
+        'No stream links are available for this file right now'
       );
     }
 
@@ -251,7 +248,6 @@ var Resolver = (function () {
     resolve: resolve,
     resolveMovie: resolveMovie,
     resolveEpisode: resolveEpisode,
-    setCookie: function (v) { _cookie = v; },
     setApiBase: function (v) { API_BASE = v; }
   };
 })();
