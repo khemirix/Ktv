@@ -319,12 +319,22 @@
       </span>
       <div class="d-flex gap-3 align-items-center">
         <div class="nav-tabs-custom">
-          <button class="tab-btn active" data-tab="movies" tabindex="0">Movies</button>
-          <button class="tab-btn" data-tab="tv" tabindex="0">TV Shows</button>
-          <a href="tv.html" class="tab-btn active">Live TV</a>
+          <button type="button" class="tab-btn" data-tab="movies" tabindex="0">Movies</button>
+          <button type="button" class="tab-btn" data-tab="tv" tabindex="0">TV Shows</button>
+          <a href="tv.html" class="tab-btn" data-tab="live" tabindex="0">Live TV</a>
         </div>
-        <input type="text" id="searchInput" class="form-control form-control-sm search-input"
-          placeholder="Search movies, shows…" aria-label="Search" tabindex="0">
+        <div class="nav-search-wrap">
+          <div class="nav-search-row">
+            <input type="text" id="searchInput" class="form-control form-control-sm search-input"
+              placeholder="Search movies, shows…" aria-label="Search" tabindex="0">
+            <button type="button" id="searchClear" class="search-clear" tabindex="0" aria-label="Clear search">×</button>
+          </div>
+          <div class="search-filters" id="searchFilters" aria-label="Filter search results">
+            <button type="button" class="search-filter active" data-filter="all" tabindex="0">All</button>
+            <button type="button" class="search-filter" data-filter="movie" tabindex="0">Movies</button>
+            <button type="button" class="search-filter" data-filter="tv" tabindex="0">TV Shows</button>
+          </div>
+        </div>
       </div>
     </div>
   </nav>
@@ -341,6 +351,34 @@
   <!-- Content -->
   <div class="container-fluid content-container">
     <div id="mainContent"></div>
+  </div>
+
+  <!-- Details Modal -->
+  <div id="detailsModal" class="details-modal" role="dialog" aria-modal="true" hidden>
+    <button id="detailsClose" class="details-close" aria-label="Close details" tabindex="0">X</button>
+    <div class="details-scroll">
+      <div id="detailsBackdrop" class="details-backdrop"></div>
+      <div class="details-inner">
+        <div class="details-header">
+          <img id="detailsPoster" class="details-poster" src="" alt="Poster">
+          <div class="details-copy">
+            <span id="detailsType" class="details-type">MOVIE</span>
+            <h1 id="detailsTitle">Loading…</h1>
+            <div id="detailsMeta" class="details-meta"></div>
+            <div id="detailsGenres" class="details-genres"></div>
+            <p id="detailsOverview" class="details-overview"></p>
+            <button id="detailsPlayBtn" class="details-play" type="button" tabindex="0">Play now</button>
+          </div>
+        </div>
+        <section id="detailsEpisodesSection" class="details-episodes" hidden>
+          <div class="details-episodes-head">
+            <h2>Episodes</h2>
+            <div id="detailsSeasonTabs" class="details-season-tabs"></div>
+          </div>
+          <div id="detailsEpisodeList" class="details-episode-list"></div>
+        </section>
+      </div>
+    </div>
   </div>
 
   <!-- ── Player Modal ───────────────────────────────────────────── -->

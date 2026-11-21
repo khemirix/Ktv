@@ -3,27 +3,100 @@ window.IS_TV_APP =
   navigator.userAgent.includes("SMART-TV") ||
   window.location !== window.parent.location;
 
-var _cardItems   = {};
+var _cardItems = {};
 var _cardCounter = 0;
 function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return k; }
 
-(async function () {
+(function () {
   var mainContent = document.getElementById('mainContent');
-  var tabBtns     = document.querySelectorAll('.tab-btn');
+  var navButtons = Array.prototype.slice.call(document.querySelectorAll('.nav-tabs-custom .tab-btn'));
+  var tabBtns = Array.prototype.slice.call(document.querySelectorAll('button.tab-btn[data-tab]'));
   var searchInput = document.getElementById('searchInput');
-  var currentTab  = 'movies';
 
-  // current TV show context for the episode panel
-  var _tvContext = null; // { title, year, tmdbId, seasons: [{season_number, episode_count}] }
-  var _subs      = null; // active subtitle controller
-  var _player    = null; // active MediaPlayer controller
-  var _imdbCache = {};   // tmdbId -> imdbId
+  var params = new URLSearchParams(window.location.search);
+  var currentTab = params.get('tab') === 'tv' ? 'tv' : 'movies';
 
-  // ── TV Remote ────────────────────────────────────────────────────
+  var _subs = null;           // active subtitle controller
+  var _player = null;         // active MediaPlayer controller
+  var _imdbCache = {};        // tmdbId -> imdbId
+  var _tvContext = null;      // active series context for the player panel
+  var _detailsContext = null; // active details modal context
+  var _detailsToken = 0;
+  var _catalogToken = 0;
+  var _searchToken = 0;
+  var _searchTimer = null;
+  var _searchState = { query: '', filter: 'all', results: [] };
+
+  var NO_POSTER = 'https://placehold.co/400x600/1a1a1a/666666?text=No+Poster';
+
+  var MOVIE_SECTIONS = [
+    { title: 'Trending Movies', load: function () { return TMDB.trendingMovies(); } },
+    { title: 'Popular Movies', load: function () { return TMDB.moviesPopular(); } },
+    { title: 'Recently Added Movies', load: function () { return TMDB.moviesRecentlyAdded(); } },
+    { title: 'Top Rated Movies', load: function () { return TMDB.moviesTopRated(); } },
+    { title: 'Action Movies', load: function () { return TMDB.discoverMovies(28); } },
+    { title: 'Comedy Movies', load: function () { return TMDB.discoverMovies(35); } },
+    { title: 'Drama Movies', load: function () { return TMDB.discoverMovies(18); } },
+    { title: 'Horror Movies', load: function () { return TMDB.discoverMovies(27); } },
+    { title: 'Recommended Movies', load: function () { return TMDB.moviesRecommended(); } }
+  ];
+
+  var TV_SECTIONS = [
+    { title: 'Trending TV Shows', load: function () { return TMDB.trendingTv(); } },
+    { title: 'Popular Series', load: function () { return TMDB.tvPopular(); } },
+    { title: 'Recently Added Series', load: function () { return TMDB.tvRecentlyAdded(); } },
+    { title: 'Top Rated Series', load: function () { return TMDB.tvTopRated(); } },
+    { title: 'Drama Series', load: function () { return TMDB.discoverTv(18); } },
+    { title: 'Comedy Series', load: function () { return TMDB.discoverTv(35); } },
+    { title: 'Anime', load: function () { return TMDB.tvAnime(); } },
+    { title: 'Recommended Series', load: function () { return TMDB.tvRecommended(); } }
+  ];
+
+  // ── Small helpers ────────────────────────────────────────────────
+  function escapeHtml(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function yearOf(item) {
+    return ((item && (item.release_date || item.first_air_date)) || '').split('-')[0] || 'N/A';
+  }
+
+  function typeOf(item) {
+    return item && item.media_type === 'tv' ? 'tv' : 'movie';
+  }
+
+  function posterUrl(item) {
+    return item && item.poster_path ? TMDB.IMG + item.poster_path : NO_POSTER;
+  }
+
+  function backdropUrl(item) {
+    if (!item) return '';
+    if (item.backdrop_path) return TMDB.IMG_HD + item.backdrop_path;
+    return item.poster_path ? TMDB.IMG_HD + item.poster_path : '';
+  }
+
+  function updateBodyLock() {
+    var playerModal = document.getElementById('playerModal');
+    var detailsModal = document.getElementById('detailsModal');
+    var locked = (playerModal && playerModal.classList.contains('active')) ||
+                 (detailsModal && !detailsModal.hidden);
+    document.body.style.overflow = locked ? 'hidden' : '';
+  }
+
+  // ── TV remote navigation ────────────────────────────────────────
   if (window.IS_TV_APP) {
     document.body.classList.add('tv-mode');
-    document.addEventListener('keydown', function(e) {
-      var focusable = Array.from(document.querySelectorAll('[tabindex="0"]:not([disabled])'));
+    document.addEventListener('keydown', function (e) {
+      var scope = document;
+      var playerModal = document.getElementById('playerModal');
+      var detailsModal = document.getElementById('detailsModal');
+      if (playerModal && playerModal.classList.contains('active')) scope = playerModal;
+      else if (detailsModal && !detailsModal.hidden) scope = detailsModal;
+
+      var focusable = Array.prototype.slice.call(scope.querySelectorAll('[tabindex="0"]:not([disabled])'))
+        .filter(function (el) { return el.offsetParent !== null; });
       if (!focusable.length) return;
       var index = focusable.indexOf(document.activeElement);
       if (index === -1) { focusable[0].focus(); return; }
@@ -33,36 +106,23 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
         case 38: index = Math.max(0, index - 5); break;
         case 40: index = Math.min(focusable.length - 1, index + 5); break;
         case 13: document.activeElement.click(); return;
-        case 10009: closePlayer(); document.body.style.cursor = 'none'; return;
+        case 10009: closePlayer(); closeDetails(); document.body.style.cursor = 'none'; return;
         default: return;
       }
       e.preventDefault();
       focusable[index].focus();
     });
-    window.addEventListener('load', function() {
+    window.addEventListener('load', function () {
       var first = document.querySelector('[tabindex="0"]');
       if (first) first.focus();
     });
   }
 
-  // ── Player helpers ───────────────────────────────────────────────
-  function closePlayer() {
-    var modal = document.getElementById('playerModal');
-    var video = document.getElementById('playerVideo');
-    if (video) video._subToken = (video._subToken || 0) + 1;
-    if (_player) { _player.destroy(); _player = null; }
-    if (_subs) { _subs.destroy(); _subs = null; }
-    closeSettingsMenu();
-    modal.classList.remove('active');
-    document.body.style.overflow = '';
-    _tvContext = null;
-    if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
-  }
-
+  // ── Player helpers (quality / subtitles / fullscreen preserved) ──
   function setPlayerState(state) {
     document.getElementById('playerStateLoading').hidden = state !== 'loading';
-    document.getElementById('playerStateVideo').hidden   = state !== 'video';
-    document.getElementById('playerStateError').hidden   = state !== 'error';
+    document.getElementById('playerStateVideo').hidden = state !== 'video';
+    document.getElementById('playerStateError').hidden = state !== 'error';
   }
 
   function showPlaybackError(message) {
@@ -73,15 +133,28 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
 
   function openModal() {
     document.getElementById('playerModal').classList.add('active');
-    document.body.style.overflow = 'hidden';
+    updateBodyLock();
+  }
+
+  function closePlayer() {
+    var modal = document.getElementById('playerModal');
+    var video = document.getElementById('playerVideo');
+    if (video) video._subToken = (video._subToken || 0) + 1;
+    if (_player) { _player.destroy(); _player = null; }
+    if (_subs) { _subs.destroy(); _subs = null; }
+    closeSettingsMenu();
+    modal.classList.remove('active');
+    _tvContext = null;
+    updateBodyLock();
+    if (document.fullscreenElement) document.exitFullscreen().catch(function () {});
   }
 
   function setSubtitleButton(status, name) {
-    var btn      = document.getElementById('subtitleToggle');
-    var menuBtn  = document.getElementById('menuSubtitleToggle');
-    var on       = status === 'on';
+    var btn = document.getElementById('subtitleToggle');
+    var menuBtn = document.getElementById('menuSubtitleToggle');
+    var on = status === 'on';
     var disabled = (status === 'loading' || status === 'none');
-    var text     = status === 'loading' ? 'Arabic subtitles: Loading…'
+    var text = status === 'loading' ? 'Arabic subtitles: Loading…'
       : status === 'none' ? 'Arabic subtitles: unavailable'
       : on ? 'Arabic subtitles: On' : 'Arabic subtitles: Off';
 
@@ -106,14 +179,13 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
     if (menu) menu.hidden = true;
   }
 
-  // Subtitle look is stored locally so the choice survives reloads.
   var SUB_STYLE_ID = 'ktvSubtitleStyle';
   var SUB_SIZES = { small: '0.9rem', medium: '1.15rem', large: '1.45rem', xlarge: '1.8rem' };
   var SUB_BGS = { none: 'transparent', dark: 'rgba(0,0,0,.65)', solid: '#000' };
 
   function applySubtitleStyle() {
     var size = localStorage.getItem('ktv_sub_size') || 'medium';
-    var bg   = localStorage.getItem('ktv_sub_bg') || 'dark';
+    var bg = localStorage.getItem('ktv_sub_bg') || 'dark';
     if (!SUB_SIZES[size]) size = 'medium';
     if (!SUB_BGS[bg]) bg = 'dark';
 
@@ -127,10 +199,10 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
       '#playerVideo::cue { direction: rtl; text-align: right; color: #fff;' +
       'font-size: ' + SUB_SIZES[size] + '; background: ' + SUB_BGS[bg] + '; }';
 
-    document.querySelectorAll('#subtitleSizeOptions .settings-option').forEach(function(b) {
+    document.querySelectorAll('#subtitleSizeOptions .settings-option').forEach(function (b) {
       b.classList.toggle('active', b.getAttribute('data-size') === size);
     });
-    document.querySelectorAll('#subtitleBgOptions .settings-option').forEach(function(b) {
+    document.querySelectorAll('#subtitleBgOptions .settings-option').forEach(function (b) {
       b.classList.toggle('active', b.getAttribute('data-bg') === bg);
     });
   }
@@ -138,9 +210,9 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
   async function subtitleMeta(opts) {
     opts = opts || {};
     var meta = {
-      imdbId:  opts.imdbId || null,
-      type:    opts.type || 'movie',
-      season:  opts.season,
+      imdbId: opts.imdbId || null,
+      type: opts.type || 'movie',
+      season: opts.season,
       episode: opts.episode
     };
     if (!meta.imdbId && opts.tmdbId) {
@@ -153,11 +225,10 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
     return meta;
   }
 
-  // ── Load a video URL into the player ────────────────────────────
   function playLinks(links, title, opts) {
-    var video       = document.getElementById('playerVideo');
+    var video = document.getElementById('playerVideo');
     var qualityList = document.getElementById('qualityList');
-    var titleEl     = document.getElementById('playerTitle');
+    var titleEl = document.getElementById('playerTitle');
 
     titleEl.textContent = title || '';
     setPlayerState('video');
@@ -168,8 +239,8 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
     setSubtitleButton('loading');
     setQualityBadge(links[0] && links[0].quality ? links[0].quality : 'Auto');
 
-    // The resolver returns a mix of direct MP4 ("ORG") and HLS .m3u8 links.
-    // Keep one direct URL as a safety net if an HLS playlist fails.
+    // ORG is a direct MP4; numbered qualities are HLS playlists. Keep one
+    // direct URL as a safety net when an HLS playlist cannot be recovered.
     var fallbackUrl = '';
     for (var i = 0; i < links.length; i++) {
       if (!MediaPlayer.isHls(links[i].url)) { fallbackUrl = links[i].url; break; }
@@ -187,17 +258,16 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
     });
 
     qualityList.innerHTML = '';
-    links.forEach(function(link, i) {
+    links.forEach(function (link, i) {
       var label = link.quality || ('Link ' + (i + 1));
       var btn = document.createElement('button');
       btn.className = 'quality-btn' + (i === 0 ? ' active' : '');
       btn.textContent = label;
-      btn.addEventListener('click', function() {
-        _player.load(link.url, {
-          fallbackUrl: (link.url === fallbackUrl) ? '' : fallbackUrl
-        });
+      btn.tabIndex = 0;
+      btn.addEventListener('click', function () {
+        _player.load(link.url, { fallbackUrl: (link.url === fallbackUrl) ? '' : fallbackUrl });
         if (_subs) _subs.resync();
-        qualityList.querySelectorAll('.quality-btn').forEach(function(b) { b.classList.remove('active'); });
+        qualityList.querySelectorAll('.quality-btn').forEach(function (b) { b.classList.remove('active'); });
         btn.classList.add('active');
         setQualityBadge(label);
         closeSettingsMenu();
@@ -209,99 +279,148 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
       fallbackUrl: (links[0].url === fallbackUrl) ? '' : fallbackUrl
     });
 
-    subtitleMeta(opts).then(function(meta) {
+    subtitleMeta(opts).then(function (meta) {
       if (video._subToken !== token) return;
       _subs = Subtitles.attach(video, meta, setSubtitleButton);
     });
   }
 
-  // ── Episode panel ────────────────────────────────────────────────
-  async function buildEpisodePanel(tmdbId, seasons) {
-    var panel      = document.getElementById('episodePanel');
-    var seasonTabs = document.getElementById('seasonTabs');
-    var epList     = document.getElementById('episodeList');
-
-    panel.hidden = false;
-    seasonTabs.innerHTML = '';
-    epList.innerHTML     = '<div class="ep-loading">Loading…</div>';
-
-    // Build season tab buttons
-    seasons.forEach(function(s, i) {
+  // ── Season / episode rendering (shared by details + player panel) ─
+  function renderSeasonTabs(container, seasons, onSelect, activeSeason) {
+    if (!container) return;
+    container.innerHTML = '';
+    seasons.forEach(function (s) {
       var btn = document.createElement('button');
-      btn.className   = 'season-tab' + (i === 0 ? ' active' : '');
-      btn.textContent = 'S' + s.season_number;
-      btn.addEventListener('click', function() {
-        seasonTabs.querySelectorAll('.season-tab').forEach(function(b) { b.classList.remove('active'); });
+      btn.type = 'button';
+      btn.className = 'season-tab' + (s.season_number === activeSeason ? ' active' : '');
+      btn.textContent = 'S' + String(s.season_number).padStart(2, '0');
+      btn.tabIndex = 0;
+      btn.addEventListener('click', function () {
+        container.querySelectorAll('.season-tab').forEach(function (b) { b.classList.remove('active'); });
         btn.classList.add('active');
-        loadEpisodes(tmdbId, s.season_number);
+        onSelect(s.season_number);
       });
-      seasonTabs.appendChild(btn);
+      container.appendChild(btn);
     });
-
-    // Load season 1 by default
-    if (seasons.length) loadEpisodes(tmdbId, seasons[0].season_number);
   }
 
-  async function loadEpisodes(tmdbId, seasonNum) {
-    var epList = document.getElementById('episodeList');
-    epList.innerHTML = '<div class="ep-loading">Loading episodes…</div>';
-    try {
-      var data = await TMDB.getSeason(tmdbId, seasonNum);
-      var episodes = (data && data.episodes) ? data.episodes : [];
-      epList.innerHTML = '';
-      episodes.forEach(function(ep) {
-        var div = document.createElement('div');
-        div.className = 'ep-item';
-        var thumb = ep.still_path
-          ? '<img src="https://image.tmdb.org/t/p/w185' + ep.still_path + '" class="ep-thumb" onerror="this.style.display=\'none\'">'
-          : '<div class="ep-thumb ep-thumb-placeholder"></div>';
-        div.innerHTML =
-          thumb +
+  function renderEpisodeList(container, episodes, season, onPlay, options) {
+    if (!container) return;
+    options = options || {};
+    container.innerHTML = '';
+
+    if (!episodes.length) {
+      container.innerHTML = '<div class="ep-loading">No episodes found for this season.</div>';
+      return;
+    }
+
+    episodes.forEach(function (ep) {
+      var epNum = ep.episode_number;
+      var title = ep.name || ('Episode ' + epNum);
+      var runtime = ep.runtime ? ' · ' + escapeHtml(ep.runtime) + ' min' : '';
+      var still = ep.still_path ? TMDB.IMG + ep.still_path : '';
+      var row = document.createElement('div');
+      row.className = options.compact ? 'ep-item' : 'detail-episode';
+      row.tabIndex = 0;
+
+      if (options.compact) {
+        row.innerHTML =
+          (still ? '<img class="ep-thumb" src="' + escapeHtml(still) + '" alt="" onerror="this.style.display=\'none\'">'
+                 : '<div class="ep-thumb ep-thumb-placeholder"></div>') +
           '<div class="ep-info">' +
-            '<div class="ep-num">S' + String(seasonNum).padStart(2,'0') + 'E' + String(ep.episode_number).padStart(2,'0') + '</div>' +
-            '<div class="ep-name">' + (ep.name || 'Episode ' + ep.episode_number) + '</div>' +
+            '<div class="ep-num">S' + String(season).padStart(2, '0') + 'E' + String(epNum).padStart(2, '0') + '</div>' +
+            '<div class="ep-name">' + escapeHtml(title) + '</div>' +
           '</div>';
-        div.addEventListener('click', function() {
-          // Mark active
-          epList.querySelectorAll('.ep-item').forEach(function(e) { e.classList.remove('active'); });
-          div.classList.add('active');
-          loadTVEpisode(seasonNum, ep.episode_number, ep.name);
-        });
-        epList.appendChild(div);
-      });
-    } catch(err) {
-      epList.innerHTML = '<div class="ep-loading" style="color:#f87171">Failed to load episodes</div>';
+      } else {
+        row.innerHTML =
+          (still ? '<img class="detail-ep-thumb" src="' + escapeHtml(still) + '" alt="" onerror="this.style.display=\'none\'">'
+                 : '<div class="detail-ep-thumb detail-ep-thumb-empty"><i class="fas fa-film"></i></div>') +
+          '<div class="detail-ep-body">' +
+            '<div class="detail-ep-top">' +
+              '<span class="detail-ep-num">E' + String(epNum).padStart(2, '0') + '</span>' +
+              '<strong>' + escapeHtml(title) + '</strong>' +
+            '</div>' +
+            (ep.overview ? '<p>' + escapeHtml(ep.overview) + '</p>' : '') +
+            '<div class="detail-ep-foot">' + escapeHtml(ep.air_date || '') + runtime + '</div>' +
+          '</div>' +
+          '<button type="button" class="detail-ep-play" tabindex="0" aria-label="Play ' + escapeHtml(title) + '">' +
+            '<i class="fas fa-play"></i><span>Play</span>' +
+          '</button>';
+      }
+
+      function activate() {
+        if (options.onBeforePlay) options.onBeforePlay(row);
+        onPlay(ep);
+      }
+      row.addEventListener('click', activate);
+      var playBtn = row.querySelector('.detail-ep-play');
+      if (playBtn) {
+        playBtn.addEventListener('click', function (e) { e.stopPropagation(); activate(); });
+      }
+      container.appendChild(row);
+    });
+  }
+
+  async function loadEpisodesInto(container, tmdbId, season, onPlay, options) {
+    if (!container) return [];
+    container.innerHTML = '<div class="ep-loading">Loading episodes…</div>';
+    try {
+      var data = await TMDB.getSeason(tmdbId, season);
+      var episodes = (data && data.episodes) ? data.episodes : [];
+      renderEpisodeList(container, episodes, season, onPlay, options);
+      return episodes;
+    } catch (err) {
+      container.innerHTML = '<div class="ep-loading" style="color:#f87171">Failed to load episodes</div>';
+      return [];
     }
   }
 
-  async function loadTVEpisode(season, episode, epName) {
+  async function loadPlayerEpisodes(tmdbId, season) {
+    var list = document.getElementById('episodeList');
+    var episodes = await loadEpisodesInto(list, tmdbId, season, function (ep) {
+      playEpisode(season, ep.episode_number, ep.name);
+    }, { compact: true });
+
+    if (_tvContext) {
+      _tvContext.episodes = episodes;
+      Array.prototype.forEach.call(list.querySelectorAll('.ep-item'), function (row, i) {
+        var ep = episodes[i];
+        if (ep && _tvContext.currentSeason === season && _tvContext.currentEpisode === ep.episode_number) {
+          row.classList.add('active');
+        }
+      });
+    }
+  }
+
+  async function playEpisode(season, episode, epName) {
     if (!_tvContext) return;
-    var label = _tvContext.title + ' · S' + String(season).padStart(2,'0') + 'E' + String(episode).padStart(2,'0');
-    // Show loading inside the player area without closing the whole modal
-    document.getElementById('playerLoadingTitle').textContent = 'Loading ' + label + '…';
+    _tvContext.currentSeason = season;
+    _tvContext.currentEpisode = episode;
+    document.getElementById('playerLoadingTitle').textContent = 'Loading ' + _tvContext.title + ' · S' +
+      String(season).padStart(2, '0') + 'E' + String(episode).padStart(2, '0') + '…';
     setPlayerState('loading');
     try {
       var links = await Resolver.resolveEpisode({
-        title:   _tvContext.title,
-        year:    _tvContext.year,
-        season:  season,
+        title: _tvContext.title,
+        year: _tvContext.year,
+        season: season,
         episode: episode
       });
-      playLinks(links, label, {
+      playLinks(links, _tvContext.title + ' · S' + String(season).padStart(2, '0') + 'E' + String(episode).padStart(2, '0'), {
         type: 'tv', tmdbId: _tvContext.tmdbId, season: season, episode: episode
       });
-    } catch(err) {
-      setPlayerState('error');
-      document.getElementById('playerErrorMsg').textContent = err.message || 'Not found';
+    } catch (err) {
+      showPlaybackError(err.message || 'Episode not found');
     }
   }
 
-  // ── Main play handler ────────────────────────────────────────────
-  window.openPlayerModal = async function(key, type) {
-    var item  = _cardItems[key];
+  // ── Playback entry point (movies + episodes) ────────────────────
+  async function startPlayback(key, type, opts) {
+    opts = opts || {};
+    var item = _cardItems[key];
     if (!item) return;
     var title = item.title || item.name || 'Unknown';
-    var year  = (item.release_date || item.first_air_date || '').split('-')[0] || '';
+    var year = yearOf(item);
 
     document.getElementById('playerLoadingTitle').textContent = 'Loading "' + title + '"…';
     document.getElementById('episodePanel').hidden = true;
@@ -309,48 +428,370 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
     openModal();
 
     if (type === 'tv') {
-      // Fetch TMDB season info + resolve S1E1 in parallel
       try {
-        var details = await TMDB.getById(item.id);
-        var seasons = (details && details.seasons)
-          ? details.seasons.filter(function(s) { return s.season_number > 0; })
-          : [];
+        var details = opts.details || await TMDB.getById(item.id, 'tv');
+        var seasons = (details && details.seasons) ? details.seasons : [];
+        var season = opts.season || (seasons[0] && seasons[0].season_number) || 1;
+        var episode = opts.episode || 1;
 
-        _tvContext = { title: title, year: year, tmdbId: item.id, seasons: seasons };
+        _tvContext = {
+          key: key, title: title, year: year, tmdbId: item.id,
+          seasons: seasons, details: details,
+          currentSeason: season, currentEpisode: episode, episodes: []
+        };
 
-        // Build episode panel (async, non-blocking)
-        buildEpisodePanel(item.id, seasons);
+        if (seasons.length) {
+          var panel = document.getElementById('episodePanel');
+          panel.hidden = false;
+          renderSeasonTabs(document.getElementById('seasonTabs'), seasons, function (n) {
+            loadPlayerEpisodes(item.id, n);
+          }, season);
+          loadPlayerEpisodes(item.id, season);
+        }
 
-        // Resolve S1E1
-        var links = await Resolver.resolveEpisode({ title: title, year: year, season: 1, episode: 1 });
-        var epLabel = title + ' · S01E01';
-        playLinks(links, epLabel, {
-          type: 'tv', tmdbId: item.id, season: 1, episode: 1
+        var links = await Resolver.resolveEpisode({
+          title: title, year: year, season: season, episode: episode
         });
-
-        // Mark first episode active once panel loads
-        setTimeout(function() {
-          var first = document.querySelector('.ep-item');
-          if (first) first.classList.add('active');
-        }, 800);
-
-      } catch(err) {
-        setPlayerState('error');
-        document.getElementById('playerErrorMsg').textContent = err.message || 'Not found';
+        playLinks(links, title + ' · S' + String(season).padStart(2, '0') + 'E' + String(episode).padStart(2, '0'), {
+          type: 'tv', tmdbId: item.id, season: season, episode: episode
+        });
+      } catch (err) {
+        showPlaybackError(err.message || 'Episode not found');
       }
     } else {
-      // Movie
       document.getElementById('episodePanel').hidden = true;
       try {
-        var links = await Resolver.resolveMovie({ title: title, year: year });
-        playLinks(links, title, { type: 'movie', tmdbId: item.id });
-      } catch(err) {
-        setPlayerState('error');
-        document.getElementById('playerErrorMsg').textContent = err.message || 'Not found';
+        var movieLinks = await Resolver.resolveMovie({ title: title, year: year });
+        playLinks(movieLinks, title, { type: 'movie', tmdbId: item.id });
+      } catch (err) {
+        showPlaybackError(err.message || 'Movie not found');
       }
     }
-  };
+  }
 
+  window.openPlayerModal = startPlayback;
+
+  // ── Details modal (movie + series metadata) ─────────────────────
+  function closeDetails() {
+    var modal = document.getElementById('detailsModal');
+    if (!modal || modal.hidden) return;
+    _detailsToken += 1;
+    _detailsContext = null;
+    modal.hidden = true;
+    updateBodyLock();
+  }
+
+  function populateDetails(item, details, type) {
+    var e = {
+      backdrop: document.getElementById('detailsBackdrop'),
+      poster: document.getElementById('detailsPoster'),
+      type: document.getElementById('detailsType'),
+      title: document.getElementById('detailsTitle'),
+      meta: document.getElementById('detailsMeta'),
+      genres: document.getElementById('detailsGenres'),
+      overview: document.getElementById('detailsOverview'),
+      episodes: document.getElementById('detailsEpisodesSection')
+    };
+    var src = details || item;
+
+    var bg = backdropUrl(src);
+    e.backdrop.style.backgroundImage = bg ? 'url("' + bg + '")' : 'none';
+    e.poster.src = posterUrl(src);
+    e.poster.alt = src.title || src.name || 'Poster';
+    e.type.textContent = type === 'tv' ? 'TV SERIES' : 'MOVIE';
+    e.title.textContent = src.title || src.name || 'Untitled';
+
+    var meta = [];
+    var year = yearOf(src);
+    if (year !== 'N/A') meta.push(year);
+    if (type === 'tv') {
+      var seasons = (src.seasons && src.seasons.length) || src.number_of_seasons || 0;
+      if (seasons) meta.push(seasons + (seasons === 1 ? ' Season' : ' Seasons'));
+      if (src.runtime) meta.push(src.runtime + ' min episodes');
+    } else if (src.runtime) {
+      meta.push(src.runtime + ' min');
+    }
+    if (src.vote_average) meta.push('★ ' + Number(src.vote_average).toFixed(1));
+    e.meta.textContent = meta.join('  •  ');
+
+    e.genres.innerHTML = (src.genres || []).map(function (g) {
+      return '<span class="genre-chip">' + escapeHtml(g.name || g) + '</span>';
+    }).join('');
+
+    e.overview.textContent = src.overview || 'No overview available for this title.';
+    e.episodes.hidden = type !== 'tv';
+  }
+
+  async function loadDetailsEpisodes(season) {
+    if (!_detailsContext) return;
+    var ctx = _detailsContext;
+    var list = document.getElementById('detailsEpisodeList');
+    ctx.season = season;
+    var episodes = await loadEpisodesInto(list, ctx.details.id, season, function (ep) {
+      startPlayback(ctx.key, 'tv', {
+        season: season,
+        episode: ep.episode_number,
+        episodeName: ep.name,
+        details: ctx.details
+      });
+    }, { compact: false });
+    ctx.episodes = episodes;
+  }
+
+  async function openDetails(key, type) {
+    var item = _cardItems[key];
+    if (!item) return;
+    var token = ++_detailsToken;
+    var modal = document.getElementById('detailsModal');
+
+    populateDetails(item, null, type);
+    document.getElementById('detailsEpisodeList').innerHTML = '<div class="ep-loading">Loading details…</div>';
+    modal.hidden = false;
+    updateBodyLock();
+
+    try {
+      var details = await TMDB.getById(item.id, type);
+      if (token !== _detailsToken) return;
+      if (!details) throw new Error('Details are unavailable for this title.');
+      _detailsContext = { key: key, type: type, item: item, details: details, season: null, episodes: [] };
+      populateDetails(item, details, type);
+
+      if (type === 'tv') {
+        var seasons = details.seasons || [];
+        if (!seasons.length) throw new Error('No season information is available.');
+        var firstSeason = seasons[0].season_number;
+        renderSeasonTabs(document.getElementById('detailsSeasonTabs'), seasons, function (n) {
+          loadDetailsEpisodes(n);
+        }, firstSeason);
+        await loadDetailsEpisodes(firstSeason);
+      }
+    } catch (err) {
+      if (token !== _detailsToken) return;
+      document.getElementById('detailsOverview').textContent = err.message || 'Could not load details.';
+    }
+  }
+
+  window.openDetails = openDetails;
+
+  document.getElementById('detailsPlayBtn').addEventListener('click', function () {
+    var ctx = _detailsContext;
+    if (!ctx) return;
+    if (ctx.type === 'tv') {
+      var season = ctx.season || (ctx.details.seasons[0] && ctx.details.seasons[0].season_number) || 1;
+      var ep = ctx.episodes && ctx.episodes[0];
+      startPlayback(ctx.key, 'tv', {
+        season: season,
+        episode: ep ? ep.episode_number : 1,
+        episodeName: ep ? ep.name : '',
+        details: ctx.details
+      });
+    } else {
+      startPlayback(ctx.key, 'movie');
+    }
+  });
+
+  document.getElementById('detailsClose').addEventListener('click', closeDetails);
+  document.getElementById('detailsModal').addEventListener('click', function (e) {
+    if (e.target === this) closeDetails();
+  });
+
+  // ── Shared poster component ─────────────────────────────────────
+  function createPosterCard(item, type) {
+    var key = _storeItem(item);
+    var cardType = type === 'all' ? typeOf(item) : type;
+    var label = cardType === 'tv' ? 'SERIES' : 'MOVIE';
+    var title = escapeHtml(item.title || item.name || 'Untitled');
+    return '<article class="poster-card" tabindex="0" role="button" aria-label="' + title + '" ' +
+      'onclick="window.openDetails(' + key + ',\'' + cardType + '\')">' +
+      '<div class="poster-skeleton"></div>' +
+      '<img src="' + escapeHtml(posterUrl(item)) + '" alt="' + title + '" loading="lazy" ' +
+        'onload="this.parentElement.classList.add(\'is-loaded\')" ' +
+        'onerror="this.parentElement.classList.add(\'is-loaded\');this.src=\'' + NO_POSTER + '\'">' +
+      '<span class="poster-type">' + label + '</span>' +
+      '<span class="poster-year">' + escapeHtml(yearOf(item)) + '</span>' +
+      '<div class="poster-overlay">' +
+        '<h3>' + title + '</h3>' +
+        '<button type="button" class="poster-play" tabindex="0" ' +
+          'onclick="event.stopPropagation();window.openDetails(' + key + ',\'' + cardType + '\')">' +
+          '<i class="fas fa-play"></i> Details' +
+        '</button>' +
+      '</div>' +
+    '</article>';
+  }
+
+  function createSkeletonSection(title) {
+    var section = document.createElement('section');
+    section.className = 'content-section';
+    var cards = '';
+    for (var i = 0; i < 8; i++) cards += '<div class="poster-card is-skeleton"><div class="poster-skeleton"></div></div>';
+    section.innerHTML = '<div class="section-heading"><h2>' + escapeHtml(title) + '</h2></div>' +
+      '<div class="poster-rail">' + cards + '</div>';
+    return section;
+  }
+
+  function createSection(title, items, type) {
+    var section = document.createElement('section');
+    section.className = 'content-section';
+    section.innerHTML =
+      '<div class="section-heading">' +
+        '<div><h2>' + escapeHtml(title) + '</h2><span class="section-count">' + items.length + ' titles</span></div>' +
+        '<div class="rail-arrows">' +
+          '<button type="button" class="rail-arrow" data-dir="left" tabindex="0" aria-label="Scroll left"><i class="fas fa-chevron-left"></i></button>' +
+          '<button type="button" class="rail-arrow" data-dir="right" tabindex="0" aria-label="Scroll right"><i class="fas fa-chevron-right"></i></button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="poster-rail">' +
+        (items.length ? items.map(function (i) { return createPosterCard(i, type); }).join('')
+                      : '<div class="rail-empty">Nothing available in this category right now.</div>') +
+      '</div>';
+
+    var rail = section.querySelector('.poster-rail');
+    section.querySelectorAll('.rail-arrow').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var amount = Math.max(240, rail.clientWidth * 0.8);
+        rail.scrollBy({ left: btn.dataset.dir === 'left' ? -amount : amount, behavior: 'smooth' });
+      });
+    });
+    return section;
+  }
+
+  async function setHeroContent(items, type) {
+    if (!items || !items.length) return;
+    var f = items[0];
+    var key = _storeItem(f);
+    var heroImage = document.getElementById('heroImage');
+    var heroTitle = document.getElementById('heroTitle');
+    var heroDescription = document.getElementById('heroDescription');
+    var heroPlayBtn = document.getElementById('heroPlayBtn');
+
+    var bg = backdropUrl(f);
+    heroImage.style.backgroundImage = bg ? 'url("' + bg + '")' : 'none';
+    heroTitle.textContent = f.title || f.name || 'Featured';
+    heroDescription.textContent = f.overview || 'Watch now';
+    heroPlayBtn.onclick = function () { openDetails(key, type); };
+  }
+
+  function setHeroLoading() {
+    document.getElementById('heroImage').style.backgroundImage = 'none';
+    document.getElementById('heroTitle').textContent = 'Loading ' + (currentTab === 'tv' ? 'series' : 'movies') + '…';
+    document.getElementById('heroDescription').textContent = 'Preparing your personalized catalog.';
+    document.getElementById('heroPlayBtn').onclick = null;
+  }
+
+  // ── Catalog rendering ───────────────────────────────────────────
+  async function renderContent(tab) {
+    currentTab = tab;
+    _searchState.query = '';
+    navButtons.forEach(function (b) { b.classList.toggle('active', b.dataset.tab === tab); });
+    try {
+      if (tab === 'tv') history.replaceState(null, '', '?tab=tv');
+      else history.replaceState(null, '', window.location.pathname);
+    } catch (e) {
+      // file:// pages can reject history updates; navigation still works.
+    }
+
+    var sections = tab === 'tv' ? TV_SECTIONS : MOVIE_SECTIONS;
+    var token = ++_catalogToken;
+    setHeroLoading();
+    mainContent.innerHTML = '';
+    sections.forEach(function (s) { mainContent.appendChild(createSkeletonSection(s.title)); });
+
+    var results = await Promise.all(sections.map(async function (s) {
+      try {
+        var data = await s.load();
+        return (data.results || []).slice(0, 14);
+      } catch (err) {
+        console.warn('[Ktv catalog] ' + s.title + ': ' + err.message);
+        return [];
+      }
+    }));
+
+    if (token !== _catalogToken) return;
+    setHeroContent(results[0], tab);
+    mainContent.innerHTML = '';
+    sections.forEach(function (s, i) {
+      mainContent.appendChild(createSection(s.title, results[i], tab));
+    });
+  }
+
+  tabBtns.forEach(function (btn) {
+    btn.addEventListener('click', function () { renderContent(btn.dataset.tab); });
+  });
+
+  // ── Search across movies + series with type filtering ──────────
+  function renderSearchResults() {
+    var query = _searchState.query;
+    var filter = _searchState.filter;
+    var items = _searchState.results.filter(function (item) {
+      if (filter === 'all') return true;
+      return typeOf(item) === filter;
+    });
+
+    var typeLabel = filter === 'all' ? 'Movies & TV' : (filter === 'tv' ? 'TV Series' : 'Movies');
+    mainContent.innerHTML = '';
+    var section = createSection('Results for “' + query + '” · ' + typeLabel, items.slice(0, 40), 'all');
+    var rail = section.querySelector('.poster-rail');
+    rail.classList.remove('poster-rail');
+    rail.classList.add('poster-grid');
+    section.querySelectorAll('.rail-arrow').forEach(function (b) { b.hidden = true; });
+    mainContent.appendChild(section);
+  }
+
+  function showSearchSkeleton() {
+    setHeroLoading();
+    mainContent.innerHTML = '';
+    mainContent.appendChild(createSkeletonSection('Searching…'));
+  }
+
+  async function runSearch() {
+    var q = searchInput.value.trim();
+    if (!q) { renderContent(currentTab); return; }
+    var token = ++_searchToken;
+    _searchState.query = q;
+    showSearchSkeleton();
+    try {
+      var res = await TMDB.search(q);
+      if (token !== _searchToken) return;
+      _searchState.results = (res.results || []).filter(function (r) {
+        return typeOf(r) === 'movie' || typeOf(r) === 'tv';
+      });
+      renderSearchResults();
+    } catch (err) {
+      if (token !== _searchToken) return;
+      mainContent.innerHTML = '<div class="search-error">Search failed: ' + escapeHtml(err.message) + '</div>';
+    }
+  }
+
+  searchInput.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    clearTimeout(_searchTimer);
+    runSearch();
+  });
+  searchInput.addEventListener('input', function () {
+    clearTimeout(_searchTimer);
+    _searchTimer = setTimeout(runSearch, 400);
+  });
+
+  document.querySelectorAll('.search-filter').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.search-filter').forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      _searchState.filter = btn.dataset.filter;
+      if (_searchState.query) renderSearchResults();
+    });
+  });
+
+  document.getElementById('searchClear').addEventListener('click', function () {
+    searchInput.value = '';
+    _searchState.query = '';
+    document.querySelectorAll('.search-filter').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.filter === 'all');
+    });
+    _searchState.filter = 'all';
+    renderContent(currentTab);
+  });
+
+  // ── Player controls / subtitle settings ────────────────────────
   function toggleSubtitles() {
     if (!_subs) return;
     var btn = document.getElementById('subtitleToggle');
@@ -361,26 +802,26 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
   document.getElementById('menuSubtitleToggle').addEventListener('click', toggleSubtitles);
 
   var settingsBtn = document.getElementById('playerSettingsBtn');
-  settingsBtn.addEventListener('click', function(e) {
+  settingsBtn.addEventListener('click', function (e) {
     e.stopPropagation();
     var menu = document.getElementById('settingsMenu');
     menu.hidden = !menu.hidden;
   });
-  document.addEventListener('click', function(e) {
+  document.addEventListener('click', function (e) {
     var menu = document.getElementById('settingsMenu');
     if (!menu || menu.hidden) return;
     if (menu.contains(e.target) || settingsBtn.contains(e.target)) return;
     menu.hidden = true;
   });
 
-  document.querySelectorAll('#subtitleSizeOptions .settings-option').forEach(function(b) {
-    b.addEventListener('click', function() {
+  document.querySelectorAll('#subtitleSizeOptions .settings-option').forEach(function (b) {
+    b.addEventListener('click', function () {
       localStorage.setItem('ktv_sub_size', b.getAttribute('data-size'));
       applySubtitleStyle();
     });
   });
-  document.querySelectorAll('#subtitleBgOptions .settings-option').forEach(function(b) {
-    b.addEventListener('click', function() {
+  document.querySelectorAll('#subtitleBgOptions .settings-option').forEach(function (b) {
+    b.addEventListener('click', function () {
       localStorage.setItem('ktv_sub_bg', b.getAttribute('data-bg'));
       applySubtitleStyle();
     });
@@ -388,126 +829,19 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
   applySubtitleStyle();
 
   document.getElementById('playerClose').addEventListener('click', closePlayer);
-  document.getElementById('playerModal').addEventListener('click', function(e) {
+  document.getElementById('playerModal').addEventListener('click', function (e) {
     if (e.target === this) closePlayer();
   });
-  window.addEventListener('keydown', function(e) {
+
+  window.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
     var menu = document.getElementById('settingsMenu');
     if (menu && !menu.hidden) { menu.hidden = true; return; }
-    closePlayer();
+    var playerModal = document.getElementById('playerModal');
+    var detailsModal = document.getElementById('detailsModal');
+    if (playerModal.classList.contains('active')) { closePlayer(); return; }
+    if (detailsModal && !detailsModal.hidden) closeDetails();
   });
 
-  // ── Cards ────────────────────────────────────────────────────────
-  function createMovieCard(item, type) {
-    var year   = (item.release_date || item.first_air_date || '').split('-')[0] || 'N/A';
-    var poster = item.poster_path ? TMDB.IMG + item.poster_path : 'https://via.placeholder.com/200x300?text=No+Image';
-    var title  = (item.title || item.name || '').replace(/"/g, '&quot;');
-    var k      = _storeItem(item);
-    return '<div class="movie-card" tabindex="0" onclick="window.openPlayerModal(' + k + ',\'' + type + '\')">' +
-      '<img src="' + poster + '" alt="' + title + '">' +
-      '<div class="movie-card-overlay">' +
-        '<div class="movie-card-title">' + (item.title || item.name) + '</div>' +
-        '<div class="movie-card-info">' + year + '</div>' +
-        '<div class="movie-card-actions">' +
-          '<button class="btn-play-small" onclick="event.stopPropagation();window.openPlayerModal(' + k + ',\'' + type + '\')">' +
-            '<i class="fas fa-play"></i> Play' +
-          '</button>' +
-        '</div>' +
-      '</div>' +
-    '</div>';
-  }
-
-  function createSection(title, items, type) {
-    var section = document.createElement('div');
-    section.className = 'content-section';
-    section.innerHTML =
-      '<h2 class="section-title">' + title + '</h2>' +
-      '<div class="movie-grid">' + items.map(function(i) { return createMovieCard(i, type); }).join('') + '</div>';
-    return section;
-  }
-
-async function setHeroContent(items) {
-  if (!items || !items.length) return;
-
-  const f = items[0];
-  const k = _storeItem(f);
-
-  const heroType = currentTab === 'tv' ? 'tv' : 'movie';
-
-  const heroImage = document.getElementById('heroImage');
-  const heroTitle = document.getElementById('heroTitle');
-  const heroDescription = document.getElementById('heroDescription');
-  const heroPlayBtn = document.getElementById('heroPlayBtn');
-
-  // USE BACKDROP ONLY
-  const bg = f.backdrop_path
-    ? `https://image.tmdb.org/t/p/original${f.backdrop_path}`
-    : '';
-
-  heroImage.style.backgroundImage = bg ? `url("${bg}")` : 'none';
-
-  heroTitle.textContent =
-    f.title ||
-    f.name ||
-    'Featured';
-
-  heroDescription.textContent =
-    f.overview ||
-    'Watch now';
-
-  heroPlayBtn.onclick = () => {
-    window.openPlayerModal(k, heroType);
-  };
-}
-
-  var sortByDate = function(arr) {
-    return arr.slice().sort(function(a, b) {
-      return (b.release_date || b.first_air_date || '') > (a.release_date || a.first_air_date || '') ? 1 : -1;
-    });
-  };
-
-  async function loadMovies() {
-    var r = await Promise.all([TMDB.moviesNowPlaying(), TMDB.moviesPopular(), TMDB.moviesTopRated()]);
-    mainContent.innerHTML = '';
-    await setHeroContent(sortByDate(r[0].results));
-    mainContent.appendChild(createSection('Now Playing', sortByDate(r[0].results).slice(0,12), 'movie'));
-    mainContent.appendChild(createSection('Popular',     sortByDate(r[1].results).slice(0,12), 'movie'));
-    mainContent.appendChild(createSection('Top Rated',   sortByDate(r[2].results).slice(0,12), 'movie'));
-  }
-
-  async function loadTV() {
-    var r = await Promise.all([TMDB.tvAiringToday(), TMDB.tvPopular(), TMDB.tvTopRated()]);
-    mainContent.innerHTML = '';
-    await setHeroContent(sortByDate(r[0].results));
-    mainContent.appendChild(createSection('Airing Today', sortByDate(r[0].results).slice(0,12), 'tv'));
-    mainContent.appendChild(createSection('Popular',      sortByDate(r[1].results).slice(0,12), 'tv'));
-    mainContent.appendChild(createSection('Top Rated',    sortByDate(r[2].results).slice(0,12), 'tv'));
-  }
-
-  async function renderContent(tab) {
-    currentTab = tab;
-    tabBtns.forEach(function(btn) { btn.classList.toggle('active', btn.dataset.tab === tab); });
-    if (tab === 'movies') await loadMovies();
-    else if (tab === 'tv') await loadTV();
-  }
-
-  tabBtns.forEach(function(btn) { btn.addEventListener('click', function() { renderContent(btn.dataset.tab); }); });
-
-  searchInput.addEventListener('keydown', async function(e) {
-    if (e.key !== 'Enter') return;
-    var q = searchInput.value.trim();
-    if (!q) return;
-    var res = await TMDB.search(q);
-    mainContent.innerHTML = '';
-    var items = res.results.filter(function(r) { return r.media_type !== 'person'; });
-    var section = document.createElement('div');
-    section.className = 'content-section';
-    section.innerHTML =
-      '<h2 class="section-title">Results for "' + q + '"</h2>' +
-      '<div class="movie-grid">' + items.map(function(i) { return createMovieCard(i, i.media_type || 'movie'); }).join('') + '</div>';
-    mainContent.appendChild(section);
-  });
-
-  renderContent('movies');
+  renderContent(currentTab);
 })();
