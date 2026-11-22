@@ -93,7 +93,7 @@ Rationale:
 
 1. Details modal → Play → `startPlayback(key, 'movie')`.
 2. `Resolver.resolveMovie({title, year})` finds the Febbox share and best video file.
-3. `playLinks()` asks `MediaPlayer.chooseDefault(links)` for the first quality. Slow/2G/save-data connections start at the lowest quality, medium connections at up to 720p, and fast or unknown connections keep the highest/first link. Manual quality-button clicks override this for the session.
+3. `playLinks()` asks `MediaPlayer.chooseDefault(links)` for the first quality. Slow/2G/save-data connections start at the lowest quality, medium and unknown connections at up to 720p, and only confidently fast (`4g`/high downlink) connections keep the highest/first link. Manual quality-button clicks override this for the session.
 4. `MediaPlayer.create()` is started with that link and a direct-URL fallback, then `Subtitles.attach()` adds Arabic cues by default using TMDB's IMDb external ID.
 
 ### Series playback

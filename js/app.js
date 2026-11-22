@@ -254,7 +254,9 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
       ? 'Lowest quality selected automatically for a slow connection'
       : tier === 'medium'
         ? 'Balanced quality selected automatically for your connection'
-        : 'Quality selected automatically';
+        : tier === 'unknown'
+          ? 'Balanced quality selected automatically — network speed unavailable'
+          : 'Quality selected automatically';
     setQualityBadge(defaultLink.quality || 'Auto', qualityHint);
 
     // ORG is a direct MP4; numbered qualities are HLS playlists. Keep one

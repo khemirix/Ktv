@@ -82,13 +82,15 @@ var MediaPlayer = (function () {
   function chooseDefault(links) {
     if (!links || !links.length) return 0;
     var tier = networkTier();
-    if (tier === 'unknown' || tier === 'high') return 0;
-
     var ranked = rankedLinks(links);
     if (!ranked.length) return 0;
+
+    // Only a confident fast connection keeps the current highest/first link.
+    if (tier === 'high') return 0;
     if (tier === 'low') return ranked[0].index;
 
-    // Medium connections get the best option up to 720p.
+    // Medium and unknown connections stay conservative. Without the Network
+    // Information API we cannot assume a large ORG direct file is safe.
     var balanced = ranked.filter(function (entry) { return entry.rank <= 720; });
     return (balanced.length ? balanced[balanced.length - 1] : ranked[0]).index;
   }

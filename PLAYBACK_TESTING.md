@@ -35,7 +35,7 @@ The first quality is chosen automatically from the browser's Network Information
 
 | Connection hint | Default |
 |---|---|
-| No API / unknown | highest available quality (normally `ORG`) |
+| No API / unknown | balanced default up to `720p` (conservative fallback) |
 | `slow-2g`, `2g`, `saveData`, or downlink below 1.5 Mbps | lowest available quality (normally `360p`) |
 | `3g` or downlink 1.5–5 Mbps | best option up to `720p` |
 | `4g` or downlink 5 Mbps and above | highest available quality (normally `ORG`) |
@@ -56,6 +56,17 @@ Then play a title and confirm the badge shows `360p` for the `3g` hint above, an
 - Disable network after playback starts: HLS.js should log a retry and attempt recovery, then fall back to the direct `ORG` MP4 if recovery fails.
 - Block `cdn.jsdelivr.net`: HLS qualities show a clear error and fall back to `ORG`; direct MP4 still works.
 - Wait until a signed link expires, then reload without re-resolving: the stream will fail. The app always resolves fresh links when playback starts.
+
+## Automated quality-selection tests
+
+No browser is required for these checks:
+
+```bash
+node tests/media-player-quality.test.js
+node tests/app-quality-flow.test.js
+```
+
+The first file covers conflicting network hints, unavailable Network Information API, quality-label ranking, and missing metadata. The second verifies that initial automatic selection loads once, manual selection is not overwritten, and a new playback resets the automatic default.
 
 ## Known upstream limitations
 
