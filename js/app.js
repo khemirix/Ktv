@@ -169,9 +169,11 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
     }
   }
 
-  function setQualityBadge(text) {
+  function setQualityBadge(text, hint) {
     var badge = document.getElementById('qualityBadge');
-    if (badge) badge.textContent = text || '—';
+    if (!badge) return;
+    badge.textContent = text || '—';
+    badge.title = hint || '';
   }
 
   function closeSettingsMenu() {
@@ -230,6 +232,11 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
     var qualityList = document.getElementById('qualityList');
     var titleEl = document.getElementById('playerTitle');
 
+    if (!links || !links.length) {
+      showPlaybackError('No stream links are available for this file right now');
+      return;
+    }
+
     titleEl.textContent = title || '';
     setPlayerState('video');
 
@@ -237,14 +244,22 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
     var token = (video._subToken || 0) + 1;
     video._subToken = token;
     setSubtitleButton('loading');
-    setQualityBadge(links[0] && links[0].quality ? links[0].quality : 'Auto');
+
+    // The first load follows the connection hint (slow networks start at the
+    // lowest quality). Any later button press overrides it for this session.
+    var defaultIndex = MediaPlayer.chooseDefault(links);
+    var defaultLink = links[defaultIndex];
+    var tier = MediaPlayer.networkTier();
+    var qualityHint = tier === 'low'
+      ? 'Lowest quality selected automatically for a slow connection'
+      : tier === 'medium'
+        ? 'Balanced quality selected automatically for your connection'
+        : 'Quality selected automatically';
+    setQualityBadge(defaultLink.quality || 'Auto', qualityHint);
 
     // ORG is a direct MP4; numbered qualities are HLS playlists. Keep one
     // direct URL as a safety net when an HLS playlist cannot be recovered.
-    var fallbackUrl = '';
-    for (var i = 0; i < links.length; i++) {
-      if (!MediaPlayer.isHls(links[i].url)) { fallbackUrl = links[i].url; break; }
-    }
+    var fallbackUrl = MediaPlayer.fallbackFor(links);
 
     if (_player) _player.destroy();
     _player = MediaPlayer.create(video, {
@@ -261,7 +276,7 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
     links.forEach(function (link, i) {
       var label = link.quality || ('Link ' + (i + 1));
       var btn = document.createElement('button');
-      btn.className = 'quality-btn' + (i === 0 ? ' active' : '');
+      btn.className = 'quality-btn' + (i === defaultIndex ? ' active' : '');
       btn.textContent = label;
       btn.tabIndex = 0;
       btn.addEventListener('click', function () {
@@ -269,14 +284,14 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
         if (_subs) _subs.resync();
         qualityList.querySelectorAll('.quality-btn').forEach(function (b) { b.classList.remove('active'); });
         btn.classList.add('active');
-        setQualityBadge(label);
+        setQualityBadge(label, 'Quality chosen manually');
         closeSettingsMenu();
       });
       qualityList.appendChild(btn);
     });
 
-    _player.load(links[0].url, {
-      fallbackUrl: (links[0].url === fallbackUrl) ? '' : fallbackUrl
+    _player.load(defaultLink.url, {
+      fallbackUrl: (defaultLink.url === fallbackUrl) ? '' : fallbackUrl
     });
 
     subtitleMeta(opts).then(function (meta) {

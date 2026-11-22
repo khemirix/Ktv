@@ -32,6 +32,85 @@ var MediaPlayer = (function () {
            window.Hls.isSupported();
   }
 
+  // ── Initial quality default from browser connection hints ───────
+  // The user can still pick any quality from the settings menu; this only
+  // decides which link is selected when playback starts.
+  function networkTier() {
+    var c = (typeof navigator !== 'undefined') &&
+      (navigator.connection || navigator.mozConnection || navigator.webkitConnection);
+    if (!c) return 'unknown';
+    if (c.saveData) return 'low';
+
+    var effective = String(c.effectiveType || '').toLowerCase();
+    var downlink = Number(c.downlink);
+    var rtt = Number(c.rtt);
+
+    if (effective === 'slow-2g' || effective === '2g' ||
+        (downlink > 0 && downlink < 1.5) ||
+        (rtt > 500 && downlink > 0 && downlink < 3)) {
+      return 'low';
+    }
+    if (effective === '3g' || (downlink > 0 && downlink < 5)) return 'medium';
+    if (effective === '4g' || downlink >= 5) return 'high';
+    return 'unknown';
+  }
+
+  function qualityRank(link) {
+    var label = String((link && (link.quality || link.name)) || '').toLowerCase();
+    if (!label) return null;
+
+    var k = /(\d+)\s*k\b/.exec(label);
+    if (k) {
+      var kValue = parseInt(k[1], 10);
+      return kValue === 4 ? 2160 : kValue * 1000;
+    }
+    var p = /(\d{3,4})\s*p\b/.exec(label);
+    if (p) return parseInt(p[1], 10);
+    if (label.indexOf('org') !== -1 || label.indexOf('original') !== -1) return Infinity;
+    return null;
+  }
+
+  function rankValue(rank) { return rank === null ? Infinity : rank; }
+
+  function rankedLinks(links) {
+    return links.map(function (link, i) {
+      return { link: link, index: i, rank: qualityRank(link) };
+    }).filter(function (entry) { return entry.rank !== null; })
+      .sort(function (a, b) { return a.rank - b.rank || a.index - b.index; });
+  }
+
+  function chooseDefault(links) {
+    if (!links || !links.length) return 0;
+    var tier = networkTier();
+    if (tier === 'unknown' || tier === 'high') return 0;
+
+    var ranked = rankedLinks(links);
+    if (!ranked.length) return 0;
+    if (tier === 'low') return ranked[0].index;
+
+    // Medium connections get the best option up to 720p.
+    var balanced = ranked.filter(function (entry) { return entry.rank <= 720; });
+    return (balanced.length ? balanced[balanced.length - 1] : ranked[0]).index;
+  }
+
+  function fallbackFor(links) {
+    if (!links || !links.length) return '';
+    var direct = links.map(function (link, i) {
+      return { link: link, index: i, rank: qualityRank(link) };
+    }).filter(function (entry) {
+      return entry.link && entry.link.url && !isHls(entry.link.url);
+    });
+    if (!direct.length) return '';
+
+    var tier = networkTier();
+    if (tier === 'low' || tier === 'medium') {
+      direct.sort(function (a, b) {
+        return rankValue(a.rank) - rankValue(b.rank) || a.index - b.index;
+      });
+    }
+    return direct[0].link.url;
+  }
+
   function create(video, handlers) {
     handlers = handlers || {};
 
@@ -230,6 +309,9 @@ var MediaPlayer = (function () {
   return {
     create: create,
     isHls: isHls,
+    networkTier: networkTier,
+    chooseDefault: chooseDefault,
+    fallbackFor: fallbackFor,
     supportsNativeHls: supportsNativeHls,
     hlsJsAvailable: hlsJsAvailable
   };

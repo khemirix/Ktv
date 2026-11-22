@@ -10,7 +10,7 @@
 ## Android Chrome
 
 1. Open the app and play any movie (e.g. Inception).
-2. Confirm the video starts on the default `ORG` quality.
+2. Confirm the video starts on the quality selected for the current connection (see "Network-aware default" below).
 3. Open the gear menu → choose `1080p` (an HLS link).
 4. Confirm:
    - the quality badge changes to `1080p`;
@@ -28,6 +28,28 @@
 ## Desktop Chrome / Firefox
 
 Same as Android Chrome, but HLS.js is required for `.m3u8` links. Firefox supports MSE and should use HLS.js too.
+
+## Network-aware default quality
+
+The first quality is chosen automatically from the browser's Network Information API. Manual quality selection always overrides it for the current playback session.
+
+| Connection hint | Default |
+|---|---|
+| No API / unknown | highest available quality (normally `ORG`) |
+| `slow-2g`, `2g`, `saveData`, or downlink below 1.5 Mbps | lowest available quality (normally `360p`) |
+| `3g` or downlink 1.5–5 Mbps | best option up to `720p` |
+| `4g` or downlink 5 Mbps and above | highest available quality (normally `ORG`) |
+
+To verify without a physical device, override the hint before starting playback:
+
+```js
+Object.defineProperty(navigator, 'connection', {
+  configurable: true,
+  value: { effectiveType: '3g', downlink: 1, rtt: 400, saveData: false }
+});
+```
+
+Then play a title and confirm the badge shows `360p` for the `3g` hint above, and `720p` when `effectiveType` is `3g` with `downlink: 3`. Hovering the badge explains why the quality was selected.
 
 ## Failure simulation
 

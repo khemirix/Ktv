@@ -66,7 +66,7 @@ Rationale:
 |---|---|
 | `js/tmdb.js` | Builds TMDB requests with timeout/error handling; normalizes movie/TV results; supplies trending, popular, recently added, top rated, genre discovery, anime, recommendations, details, seasons, and IMDb external IDs. |
 | `js/resolver.js` | Searches Showbox, ranks exact title/year matches, maps IDs to Febbox shares, walks folders for seasons/episodes, selects the best file, and returns quality-labelled stream links. Exposes a friendly unavailable message when no share key exists. |
-| `js/media-player.js` | Chooses playback mode per URL: native HLS on Safari/iOS, HLS.js on MSE browsers, direct HTML5 video for MP4/direct URLs. Handles HLS lifecycle, retries, fallback to the direct MP4 URL, and user-facing playback errors. |
+| `js/media-player.js` | Chooses playback mode per URL: native HLS on Safari/iOS, HLS.js on MSE browsers, direct HTML5 video for MP4/direct URLs. Selects the initial quality from browser connection hints (`networkTier()` / `chooseDefault()`), provides the direct-URL safety net (`fallbackFor()`), and handles HLS lifecycle, retries, and user-facing playback errors. |
 | `js/subtitles.js` | Discovers subtitles through the API with a provider-agnostic descriptor (`url`, `name`, `lang`, `provider`), attaches native `<track>` cues, and exposes on/off/resync/destroy controls. Playback code never searches subtitle providers itself. |
 | `js/app.js` | Owns application state and DOM. Renders catalog rails/grids, poster cards, details modals, season/episode lists, search results and filters, player controls, quality menu, subtitle settings, and TV remote navigation. |
 | `css/style.css` | Single stylesheet: shared tokens, navigation, hero, rails/grids, poster cards, details modal, TV mode, responsive breakpoints, and the native player modal. |
@@ -93,8 +93,8 @@ Rationale:
 
 1. Details modal → Play → `startPlayback(key, 'movie')`.
 2. `Resolver.resolveMovie({title, year})` finds the Febbox share and best video file.
-3. `playLinks()` builds the quality list and calls `MediaPlayer.create(video, ...)`.
-4. Subtitle metadata is resolved from TMDB's IMDb external ID, then `Subtitles.attach()` adds Arabic cues by default.
+3. `playLinks()` asks `MediaPlayer.chooseDefault(links)` for the first quality. Slow/2G/save-data connections start at the lowest quality, medium connections at up to 720p, and fast or unknown connections keep the highest/first link. Manual quality-button clicks override this for the session.
+4. `MediaPlayer.create()` is started with that link and a direct-URL fallback, then `Subtitles.attach()` adds Arabic cues by default using TMDB's IMDb external ID.
 
 ### Series playback
 
