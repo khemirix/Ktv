@@ -126,30 +126,6 @@ var TMDB = (function () {
     return (await getMovieById(id)) || (await getTvById(id));
   }
 
-  async function getEpisode(tmdbTvId, season, episode) {
-    if (!tmdbTvId || !season || !episode) return null;
-    try {
-      var ep = await fetchJSON(
-        '/tv/' + encodeURIComponent(tmdbTvId) +
-        '/season/' + encodeURIComponent(season) +
-        '/episode/' + encodeURIComponent(episode),
-        { language: 'en-US' }
-      );
-      if (!ep || ep.status_code) return null;
-      return {
-        id: ep.id || (tmdbTvId + '-S' + season + 'E' + episode),
-        series_id: tmdbTvId,
-        season: String(season),
-        episode: String(episode),
-        title: ep.name,
-        overview: ep.overview,
-        release_date: ep.air_date,
-        runtime: ep.runtime ? String(ep.runtime) : '',
-        poster_path: ep.still_path || ''
-      };
-    } catch (e) { return null; }
-  }
-
   async function getImdbId(type, tmdbId) {
     if (!tmdbId) return null;
     var path = (type === 'tv' ? '/tv/' : '/movie/') + encodeURIComponent(tmdbId) + '/external_ids';
@@ -167,18 +143,12 @@ var TMDB = (function () {
     } catch (e) { return { episodes: [] }; }
   }
 
-  // ── Existing sources (kept for compatibility) ────────────────────
-  async function moviesNowPlaying() {
-    return collection(await fetchJSON('/movie/now_playing', { language: 'en-US', page: 1 }), 'movie', null);
-  }
+  // ── Catalog sources ──────────────────────────────────────────────
   async function moviesPopular() {
     return collection(await fetchJSON('/movie/popular', { language: 'en-US', page: 1 }), 'movie', null);
   }
   async function moviesTopRated() {
     return collection(await fetchJSON('/movie/top_rated', { language: 'en-US', page: 1 }), 'movie', null);
-  }
-  async function tvAiringToday() {
-    return collection(await fetchJSON('/tv/airing_today', { language: 'en-US', page: 1 }), 'tv', null);
   }
   async function tvPopular() {
     return collection(await fetchJSON('/tv/popular', { language: 'en-US', page: 1 }), 'tv', null);
@@ -248,14 +218,11 @@ var TMDB = (function () {
     IMG_HD: IMG_HD,
     search: search,
     getById: getById,
-    getEpisode: getEpisode,
     getSeason: getSeason,
     getImdbId: getImdbId,
 
-    moviesNowPlaying: moviesNowPlaying,
     moviesPopular: moviesPopular,
     moviesTopRated: moviesTopRated,
-    tvAiringToday: tvAiringToday,
     tvPopular: tvPopular,
     tvTopRated: tvTopRated,
 

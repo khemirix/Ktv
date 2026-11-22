@@ -239,16 +239,9 @@ var Resolver = (function () {
     return await getLinks(shareKey, epFile.fid);
   }
 
-  async function resolve(opts) {
-    if (opts.type === 'tv') return await resolveEpisode(opts);
-    return await resolveMovie(opts);
-  }
-
   return {
-    resolve: resolve,
     resolveMovie: resolveMovie,
     resolveEpisode: resolveEpisode,
-    getApiBase: function () { return api(); },
-    setApiBase: function (v) { API_BASE = v; }
+    getApiBase: function () { return api(); }
   };
 })();

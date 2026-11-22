@@ -223,11 +223,6 @@ var MediaPlayer = (function () {
     return {
       load: load,
       destroy: destroy,
-      resync: function () {
-        if (s.hls && s.hls.startLoad) {
-          try { s.hls.startLoad(); } catch (e) {}
-        }
-      },
       kind: function () { return s.kind; }
     };
   }

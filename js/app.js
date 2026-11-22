@@ -349,7 +349,6 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
       }
 
       function activate() {
-        if (options.onBeforePlay) options.onBeforePlay(row);
         onPlay(ep);
       }
       row.addEventListener('click', activate);
@@ -435,8 +434,7 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
         var episode = opts.episode || 1;
 
         _tvContext = {
-          key: key, title: title, year: year, tmdbId: item.id,
-          seasons: seasons, details: details,
+          title: title, year: year, tmdbId: item.id,
           currentSeason: season, currentEpisode: episode, episodes: []
         };
 
@@ -531,7 +529,6 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
       startPlayback(ctx.key, 'tv', {
         season: season,
         episode: ep.episode_number,
-        episodeName: ep.name,
         details: ctx.details
       });
     }, { compact: false });
@@ -582,7 +579,6 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
       startPlayback(ctx.key, 'tv', {
         season: season,
         episode: ep ? ep.episode_number : 1,
-        episodeName: ep ? ep.name : '',
         details: ctx.details
       });
     } else {
