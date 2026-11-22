@@ -139,6 +139,7 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
   function closePlayer() {
     var modal = document.getElementById('playerModal');
     var video = document.getElementById('playerVideo');
+    _playToken += 1;
     if (video) video._subToken = (video._subToken || 0) + 1;
     if (_player) { _player.destroy(); _player = null; }
     if (_subs) { _subs.destroy(); _subs = null; }
@@ -169,14 +170,56 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
     }
   }
 
-  function setQualityBadge(text) {
+  function setQualityBadge(text, title) {
     var badge = document.getElementById('qualityBadge');
-    if (badge) badge.textContent = text || '—';
+    if (!badge) return;
+    badge.textContent = text || '—';
+    if (title) badge.title = title;
   }
 
   function closeSettingsMenu() {
     var menu = document.getElementById('settingsMenu');
     if (menu) menu.hidden = true;
+  }
+
+  var QUALITY_PREF_KEY = 'ktv_quality_pref';
+  var _activeQualityLabel = '';
+  var _playToken = 0;
+
+  function storageGet(key) {
+    try { return localStorage.getItem(key) || ''; } catch (e) { return ''; }
+  }
+
+  function storageSet(key, value) {
+    try { localStorage.setItem(key, value); } catch (e) {}
+  }
+
+  function storageRemove(key) {
+    try { localStorage.removeItem(key); } catch (e) {}
+  }
+
+  function qualityLabel(link, index) {
+    return (link && (link.quality || link.name)) || ('Link ' + (index + 1));
+  }
+
+  function findQualityIndex(links, label) {
+    if (!label) return -1;
+    var target = String(label).toLowerCase();
+    for (var i = 0; i < links.length; i++) {
+      if (String(qualityLabel(links[i], i)).toLowerCase() === target) return i;
+    }
+    return -1;
+  }
+
+  function updateRememberButton() {
+    var btn = document.getElementById('rememberQuality');
+    if (!btn) return;
+    var pref = storageGet(QUALITY_PREF_KEY);
+    btn.setAttribute('aria-pressed', pref ? 'true' : 'false');
+    btn.textContent = pref
+      ? 'Remember quality: ' + pref + ' (tap to clear)'
+      : 'Remember quality: Off';
+    btn.disabled = !_activeQualityLabel && !pref;
   }
 
   var SUB_STYLE_ID = 'ktvSubtitleStyle';
@@ -225,7 +268,8 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
     return meta;
   }
 
-  function playLinks(links, title, opts) {
+  async function playLinks(links, title, opts) {
+    var playToken = ++_playToken;
     var video = document.getElementById('playerVideo');
     var qualityList = document.getElementById('qualityList');
     var titleEl = document.getElementById('playerTitle');
@@ -237,14 +281,35 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
     var token = (video._subToken || 0) + 1;
     video._subToken = token;
     setSubtitleButton('loading');
-    setQualityBadge(links[0] && links[0].quality ? links[0].quality : 'Auto');
 
-    // ORG is a direct MP4; numbered qualities are HLS playlists. Keep one
-    // direct URL as a safety net when an HLS playlist cannot be recovered.
-    var fallbackUrl = '';
-    for (var i = 0; i < links.length; i++) {
-      if (!MediaPlayer.isHls(links[i].url)) { fallbackUrl = links[i].url; break; }
+    if (!links || !links.length) {
+      showPlaybackError('No stream links are available for this title right now');
+      return;
     }
+
+    var tier = await MediaPlayer.estimateNetworkTier();
+    if (playToken !== _playToken) return;
+
+    var prefIndex = findQualityIndex(links, storageGet(QUALITY_PREF_KEY));
+    var defaultIndex = prefIndex >= 0
+      ? prefIndex
+      : MediaPlayer.chooseDefault(links, tier);
+    var defaultLabel = qualityLabel(links[defaultIndex], defaultIndex);
+    var fallbackUrl = MediaPlayer.fallbackFor(links, tier);
+
+    var hint = prefIndex >= 0
+      ? 'Saved quality preference: ' + defaultLabel
+      : tier === 'high'
+        ? 'Highest quality selected automatically for a fast connection'
+        : tier === 'low'
+          ? 'Lowest quality selected automatically for a slow connection'
+          : tier === 'medium'
+            ? 'Balanced quality selected automatically for your connection'
+            : 'Conservative quality selected automatically — network speed unavailable';
+
+    _activeQualityLabel = '';
+    updateRememberButton();
+    setQualityBadge('Loading ' + defaultLabel + '…', hint);
 
     if (_player) _player.destroy();
     _player = MediaPlayer.create(video, {
@@ -254,29 +319,64 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
       },
       onAutoplayBlocked: function () {
         // Native controls stay visible; the user can tap play manually.
+      },
+      onPlaying: function (info) {
+        if (playToken !== _playToken) return;
+        if (info.url !== selectedUrl && info.url !== fallbackUrl) return;
+        markQualityByUrl(info.url);
       }
     });
 
+    var selectedUrl = links[defaultIndex].url;
+    var buttons = [];
+
+    function markQuality(index) {
+      buttons.forEach(function (b) { b.classList.remove('active'); });
+      if (buttons[index]) buttons[index].classList.add('active');
+      _activeQualityLabel = qualityLabel(links[index], index);
+      setQualityBadge(_activeQualityLabel, hint);
+      updateRememberButton();
+    }
+
+    function markQualityByUrl(url) {
+      for (var i = 0; i < links.length; i++) {
+        if (links[i].url === url) { markQuality(i); return; }
+      }
+      _activeQualityLabel = 'Direct';
+      setQualityBadge('Direct', 'Playing the direct video fallback');
+      updateRememberButton();
+    }
+
+    function selectQuality(index) {
+      if (playToken !== _playToken || !_player) return;
+      var link = links[index];
+      var label = qualityLabel(link, index);
+      if (selectedUrl === link.url) { closeSettingsMenu(); return; }
+      selectedUrl = link.url;
+      _activeQualityLabel = '';
+      buttons.forEach(function (b) { b.classList.remove('active'); });
+      setQualityBadge('Loading ' + label + '…', 'Waiting for ' + label + ' to start');
+      updateRememberButton();
+      _player.load(link.url, {
+        fallbackUrl: (link.url === fallbackUrl) ? '' : fallbackUrl
+      });
+      if (_subs) _subs.resync();
+      closeSettingsMenu();
+    }
+
     qualityList.innerHTML = '';
     links.forEach(function (link, i) {
-      var label = link.quality || ('Link ' + (i + 1));
       var btn = document.createElement('button');
-      btn.className = 'quality-btn' + (i === 0 ? ' active' : '');
-      btn.textContent = label;
+      btn.className = 'quality-btn';
+      btn.textContent = qualityLabel(link, i);
       btn.tabIndex = 0;
-      btn.addEventListener('click', function () {
-        _player.load(link.url, { fallbackUrl: (link.url === fallbackUrl) ? '' : fallbackUrl });
-        if (_subs) _subs.resync();
-        qualityList.querySelectorAll('.quality-btn').forEach(function (b) { b.classList.remove('active'); });
-        btn.classList.add('active');
-        setQualityBadge(label);
-        closeSettingsMenu();
-      });
+      btn.addEventListener('click', function () { selectQuality(i); });
+      buttons.push(btn);
       qualityList.appendChild(btn);
     });
 
-    _player.load(links[0].url, {
-      fallbackUrl: (links[0].url === fallbackUrl) ? '' : fallbackUrl
+    _player.load(links[defaultIndex].url, {
+      fallbackUrl: (links[defaultIndex].url === fallbackUrl) ? '' : fallbackUrl
     });
 
     subtitleMeta(opts).then(function (meta) {
@@ -406,7 +506,7 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
         season: season,
         episode: episode
       });
-      playLinks(links, _tvContext.title + ' · S' + String(season).padStart(2, '0') + 'E' + String(episode).padStart(2, '0'), {
+      await playLinks(links, _tvContext.title + ' · S' + String(season).padStart(2, '0') + 'E' + String(episode).padStart(2, '0'), {
         type: 'tv', tmdbId: _tvContext.tmdbId, season: season, episode: episode
       });
     } catch (err) {
@@ -452,7 +552,7 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
         var links = await Resolver.resolveEpisode({
           title: title, year: year, season: season, episode: episode
         });
-        playLinks(links, title + ' · S' + String(season).padStart(2, '0') + 'E' + String(episode).padStart(2, '0'), {
+        await playLinks(links, title + ' · S' + String(season).padStart(2, '0') + 'E' + String(episode).padStart(2, '0'), {
           type: 'tv', tmdbId: item.id, season: season, episode: episode
         });
       } catch (err) {
@@ -462,7 +562,7 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
       document.getElementById('episodePanel').hidden = true;
       try {
         var movieLinks = await Resolver.resolveMovie({ title: title, year: year });
-        playLinks(movieLinks, title, { type: 'movie', tmdbId: item.id });
+        await playLinks(movieLinks, title, { type: 'movie', tmdbId: item.id });
       } catch (err) {
         showPlaybackError(err.message || 'Movie not found');
       }
@@ -826,6 +926,19 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
       applySubtitleStyle();
     });
   });
+
+  var rememberBtn = document.getElementById('rememberQuality');
+  if (rememberBtn) {
+    rememberBtn.addEventListener('click', function () {
+      if (storageGet(QUALITY_PREF_KEY)) {
+        storageRemove(QUALITY_PREF_KEY);
+      } else if (_activeQualityLabel) {
+        storageSet(QUALITY_PREF_KEY, _activeQualityLabel);
+      }
+      updateRememberButton();
+    });
+  }
+  updateRememberButton();
   applySubtitleStyle();
 
   document.getElementById('playerClose').addEventListener('click', closePlayer);
