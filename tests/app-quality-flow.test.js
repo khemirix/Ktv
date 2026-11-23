@@ -1,8 +1,8 @@
 'use strict';
 
-// Integration-style checks for the real Cre playback flow: selected quality,
-// badge/active state, manual override, reset on a new title, and persisted
-// quality preference.
+// Integration-style checks for the new PlayerController + PlayerUI flow:
+// selected quality, badge/active state, manual override, reset on a new
+// title, and persisted quality preference.
 // Run with: node tests/app-quality-flow.test.js
 
 const assert = require('assert');
@@ -10,8 +10,9 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const APP_SOURCE = fs.readFileSync(path.join(__dirname, '..', 'js', 'app.js'), 'utf8');
 const MEDIA_SOURCE = fs.readFileSync(path.join(__dirname, '..', 'js', 'media-player.js'), 'utf8');
+const CONTROLLER_SOURCE = fs.readFileSync(path.join(__dirname, '..', 'js', 'player-controller.js'), 'utf8');
+const UI_SOURCE = fs.readFileSync(path.join(__dirname, '..', 'js', 'player-ui.js'), 'utf8');
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -23,8 +24,9 @@ function makeEl(id, tagName) {
     disabled: false,
     textContent: '',
     title: '',
+    value: '',
     tabIndex: 0,
-    style: {},
+    style: { setProperty() {} },
     dataset: {},
     children: [],
     listeners: {},
@@ -48,14 +50,15 @@ function makeEl(id, tagName) {
       if (!match) return [];
       return this.children.filter((child) => child.classList.contains(match[1]));
     },
-    querySelector(selector) {
-      return this.querySelectorAll(selector)[0] || null;
-    },
+    querySelector(selector) { return this.querySelectorAll(selector)[0] || null; },
     setAttribute(key, value) { this.attrs[key] = String(value); },
     getAttribute(key) {
       return Object.prototype.hasOwnProperty.call(this.attrs, key) ? this.attrs[key] : null;
     },
-    contains() { return false; },
+    contains(node) {
+      return this === node || this.children.indexOf(node) !== -1;
+    },
+    getBoundingClientRect() { return { left: 0, width: 100, top: 0, height: 10 }; },
     focus() {}
   };
 
@@ -66,8 +69,7 @@ function makeEl(id, tagName) {
     contains(name) { return classSet.has(name); },
     toggle(name, force) {
       if (force === undefined) force = !classSet.has(name);
-      if (force) classSet.add(name);
-      else classSet.delete(name);
+      if (force) classSet.add(name); else classSet.delete(name);
       return force;
     }
   };
@@ -91,16 +93,17 @@ function makeEl(id, tagName) {
   return el;
 }
 
-function createContext(options) {
+function createContext() {
   const elements = new Map();
   const storage = new Map();
   const loads = [];
   const state = { created: 0, destroyed: 0 };
-  const resolverQueue = [];
 
   const documentStub = {
     head: makeEl('head'),
     body: makeEl('body'),
+    documentElement: makeEl('html'),
+    activeElement: null,
     fullscreenElement: null,
     getElementById(id) {
       if (!elements.has(id)) elements.set(id, makeEl(id));
@@ -110,21 +113,21 @@ function createContext(options) {
     querySelectorAll() { return []; },
     querySelector() { return null; },
     addEventListener() {},
+    removeEventListener() {},
     exitFullscreen() { return Promise.resolve(); }
   };
 
   const windowStub = {
-    location: { search: '', pathname: '/index.html', href: 'https://site.example/index.html' },
-    addEventListener() {}
+    location: { href: 'https://site.example/index.html' },
+    addEventListener() {},
+    removeEventListener() {}
   };
-  windowStub.parent = windowStub;
 
   const sandbox = {
     console: { warn() {}, log() {}, error() {} },
     document: documentStub,
     window: windowStub,
     navigator: { userAgent: 'node', connection: { effectiveType: '2g' } },
-    history: { replaceState() {} },
     localStorage: {
       getItem: (key) => (storage.has(key) ? storage.get(key) : null),
       setItem: (key, value) => storage.set(key, String(value)),
@@ -143,7 +146,6 @@ function createContext(options) {
   vm.createContext(sandbox);
   vm.runInContext(MEDIA_SOURCE, sandbox, { filename: 'media-player.js' });
   const real = sandbox.MediaPlayer;
-
   sandbox.MediaPlayer = {
     isHls: real.isHls,
     networkTier: real.networkTier,
@@ -157,12 +159,14 @@ function createContext(options) {
       state.created += 1;
       const playerNumber = state.created;
       const controller = {
-        load(url, opts) {
-          loads.push({ player: playerNumber, url, opts, handlers });
-        },
+        load(url, opts) { loads.push({ player: playerNumber, url, opts, handlers }); },
         destroy() { state.destroyed += 1; },
         resync() {},
-        kind() { return 'stub'; }
+        kind() { return 'stub'; },
+        getAudioTracks() { return []; },
+        getCurrentAudioTrack() { return -1; },
+        setAudioTrack() { return false; },
+        onAudioTracksChanged() { return function () {}; }
       };
       controller.emitPlaying = (url) => {
         if (handlers.onPlaying) handlers.onPlaying({ url, kind: 'stub' });
@@ -172,48 +176,24 @@ function createContext(options) {
     }
   };
 
-  const item = {
-    id: 1,
-    title: 'Test Movie',
-    release_date: '2020-01-01',
-    poster_path: '',
-    overview: 'Test overview'
-  };
-  const empty = () => Promise.resolve({ results: [] });
-
-  sandbox.TMDB = {
-    IMG: 'https://image.example/w500',
-    IMG_HD: 'https://image.example/original',
-    trendingMovies: () => Promise.resolve({ results: [item] }),
-    moviesPopular: empty,
-    moviesRecentlyAdded: empty,
-    moviesTopRated: empty,
-    discoverMovies: empty,
-    moviesRecommended: empty,
-    trendingTv: empty,
-    tvPopular: empty,
-    tvRecentlyAdded: empty,
-    tvTopRated: empty,
-    discoverTv: empty,
-    tvAnime: empty,
-    tvRecommended: empty,
-    search: empty,
-    getById: () => Promise.resolve(null),
-    getImdbId: () => Promise.resolve(null),
-    getSeason: () => Promise.resolve({ episodes: [] })
-  };
-
-  sandbox.Resolver = {
-    getApiBase: () => 'https://api.example',
-    resolveMovie: () => Promise.resolve(resolverQueue.shift() || options.fallbackLinks),
-    resolveEpisode: () => Promise.resolve(resolverQueue.shift() || options.fallbackLinks)
-  };
-
+  sandbox.TMDB = { getImdbId: () => Promise.resolve(null) };
   sandbox.Subtitles = {
-    attach() { return { setEnabled() {}, resync() {}, destroy() {} }; }
+    providers: [{ id: 'auto', label: 'Auto' }],
+    applyStyle: () => ({ size: 'medium', background: 'dark' }),
+    attach() {
+      return {
+        setEnabled() {}, setProvider() {}, setLanguage() { return true; },
+        setSize() {}, setBackground() {}, resync() {}, forceReload() {},
+        getState() { return { status: 'on', languages: [], enabled: true }; },
+        destroy() {}
+      };
+    }
   };
 
-  return { sandbox, documentStub, loads, state, resolverQueue, storage };
+  vm.runInContext(CONTROLLER_SOURCE, sandbox, { filename: 'player-controller.js' });
+  vm.runInContext(UI_SOURCE, sandbox, { filename: 'player-ui.js' });
+
+  return { sandbox, documentStub, loads, state, storage };
 }
 
 const LINKS_A = [
@@ -222,19 +202,16 @@ const LINKS_A = [
   { quality: '720p', url: 'https://hls.example/a-720.m3u8' },
   { quality: '360p', url: 'https://hls.example/a-360.m3u8' }
 ];
-
 const LINKS_B = [
   { quality: '720p', url: 'https://hls.example/b-720.m3u8' },
   { quality: '360p', url: 'https://hls.example/b-360.m3u8' },
   { quality: 'ORG', url: 'https://cdn.example/b-original.mp4' }
 ];
-
 const LINKS_C = [
   { quality: '1080p', url: 'https://hls.example/c-1080.m3u8' },
   { quality: '720p', url: 'https://hls.example/c-720.m3u8' },
   { quality: '360p', url: 'https://hls.example/c-360.m3u8' }
 ];
-
 const LINKS_D = [
   { quality: '720p', url: 'https://hls.example/d-720.m3u8' },
   { quality: '360p', url: 'https://hls.example/d-360.m3u8' }
@@ -244,25 +221,34 @@ function activeIndex(qualityList) {
   return qualityList.children.findIndex((button) => button.classList.contains('active'));
 }
 
+function clickQuality(qualityList, index) {
+  const button = qualityList.children[index];
+  const event = {
+    target: { closest: () => button },
+    preventDefault() {}
+  };
+  qualityList.listeners.click[0](event);
+}
+
 async function main() {
-  const ctx = createContext({ fallbackLinks: LINKS_A });
-  vm.runInContext(APP_SOURCE, ctx.sandbox, { filename: 'app.js' });
-  await flush();
-  await flush();
+  const ctx = createContext();
+  const player = ctx.sandbox.PlayerController.create({
+    video: ctx.documentStub.getElementById('playerVideo')
+  });
+  const ui = ctx.sandbox.PlayerUI.create(player, {});
+  ui.open();
 
   const qualityList = ctx.documentStub.getElementById('qualityList');
   const badge = ctx.documentStub.getElementById('qualityBadge');
 
-  // 1. Initial automatic selection ignores API order.
-  ctx.sandbox.window.openPlayerModal(1, 'movie');
+  // 1. Automatic selection ignores API order and waits for real playback.
+  await player.open(LINKS_A, 'Test Movie', { type: 'movie' });
   await flush();
-  await flush();
-
-  assert.strictEqual(ctx.loads.length, 1, 'initial playback should load exactly once');
+  assert.strictEqual(ctx.loads.length, 1);
   assert.strictEqual(ctx.loads[0].url, LINKS_A[3].url);
   assert.strictEqual(ctx.loads[0].opts.fallbackUrl, LINKS_A[1].url);
   assert.strictEqual(qualityList.children.length, LINKS_A.length);
-  assert.strictEqual(activeIndex(qualityList), -1, 'no quality is active before playback starts');
+  assert.strictEqual(activeIndex(qualityList), -1);
   assert.strictEqual(badge.textContent, 'Loading 360p…');
   assert.match(badge.title, /slow connection/);
   console.log('PASS initial automatic selection uses 360p and waits for playback');
@@ -272,74 +258,59 @@ async function main() {
   assert.strictEqual(badge.textContent, '360p');
   console.log('PASS badge and active button update only after playback starts');
 
-  // 2. Manual selection overrides automatic selection for this playback.
-  qualityList.children[0].listeners.click[0]();
+  // 2. Manual selection overrides the automatic choice for this playback.
+  clickQuality(qualityList, 0);
   await flush();
-
-  assert.strictEqual(ctx.loads.length, 2, 'manual selection should cause exactly one extra load');
+  assert.strictEqual(ctx.loads.length, 2);
   assert.strictEqual(ctx.loads[1].url, LINKS_A[0].url);
-  assert.strictEqual(activeIndex(qualityList), -1, 'manual quality is not active before it plays');
+  assert.strictEqual(activeIndex(qualityList), -1);
   assert.strictEqual(badge.textContent, 'Loading 1080p…');
   ctx.state.lastController.emitPlaying(LINKS_A[0].url);
   assert.strictEqual(activeIndex(qualityList), 0);
   assert.strictEqual(badge.textContent, '1080p');
   console.log('PASS manual selection overrides automatic choice without extra reload');
 
-  // 3. Remember button persists an explicitly chosen quality.
-  ctx.documentStub.getElementById('rememberQuality').listeners.click[0]();
+  // 3. Remember persists an explicitly active quality.
+  ctx.documentStub.getElementById('rememberQuality').listeners.click[0]({ preventDefault() {} });
   assert.strictEqual(ctx.storage.get('ktv_quality_pref'), '1080p');
   console.log('PASS remember-quality control stores an explicit preference');
 
-  // 4. New movie recalculates the automatic default unless a preference matches.
+  // 4. New title recalculates the automatic default.
   ctx.storage.delete('ktv_quality_pref');
-  ctx.resolverQueue.push(LINKS_B);
-  ctx.sandbox.window.openPlayerModal(1, 'movie');
+  await player.open(LINKS_B, 'Another Movie', { type: 'movie' });
   await flush();
-  await flush();
-
-  assert.strictEqual(ctx.loads.length, 3, 'new movie loads exactly once');
+  assert.strictEqual(ctx.loads.length, 3);
   assert.strictEqual(ctx.loads[2].url, LINKS_B[1].url);
   assert.strictEqual(ctx.loads[2].player, 2);
   assert.strictEqual(ctx.state.destroyed, 1);
-  assert.strictEqual(activeIndex(ctx.documentStub.getElementById('qualityList')), -1);
-  assert.strictEqual(ctx.documentStub.getElementById('qualityBadge').textContent, 'Loading 360p…');
+  assert.strictEqual(activeIndex(qualityList), -1);
+  assert.strictEqual(badge.textContent, 'Loading 360p…');
   ctx.state.lastController.emitPlaying(LINKS_B[1].url);
-  assert.strictEqual(activeIndex(ctx.documentStub.getElementById('qualityList')), 1);
-  console.log('PASS new movie resets automatic selection and discards manual choice');
+  assert.strictEqual(activeIndex(qualityList), 1);
+  console.log('PASS new title resets automatic selection and discards manual choice');
 
-  // 5. A stored preference overrides the automatic low-network default.
+  // 5. Stored preference overrides the automatic low-network default.
   ctx.storage.set('ktv_quality_pref', '720p');
-  ctx.resolverQueue.push(LINKS_C);
-  ctx.sandbox.window.openPlayerModal(1, 'movie');
+  await player.open(LINKS_C, 'StoredPreference', { type: 'movie' });
   await flush();
-  await flush();
-
   assert.strictEqual(ctx.loads[3].url, LINKS_C[1].url);
-  assert.match(ctx.documentStub.getElementById('qualityBadge').title, /Saved quality preference/);
+  assert.match(badge.title, /Saved quality preference/);
   ctx.state.lastController.emitPlaying(LINKS_C[1].url);
-  assert.strictEqual(activeIndex(ctx.documentStub.getElementById('qualityList')), 1);
-  assert.strictEqual(ctx.documentStub.getElementById('qualityBadge').textContent, '720p');
+  assert.strictEqual(activeIndex(qualityList), 1);
+  assert.strictEqual(badge.textContent, '720p');
   console.log('PASS stored quality preference overrides automatic selection');
 
-  // 6. A new episode uses the same recalculated default path.
+  // 6. New episode follows the same automatic path.
   ctx.storage.delete('ktv_quality_pref');
-  ctx.resolverQueue.push(LINKS_D);
-  ctx.sandbox.window.openPlayerModal(1, 'tv', {
-    season: 1,
-    episode: 1,
-    details: { id: 1, seasons: [{ season_number: 1 }] }
-  });
+  await player.open(LINKS_D, 'Episode 1', { type: 'tv', season: 1, episode: 1 });
   await flush();
-  await flush();
-  await flush();
-
   assert.strictEqual(ctx.loads[4].url, LINKS_D[1].url);
   assert.strictEqual(ctx.loads[4].player, 4);
   ctx.state.lastController.emitPlaying(LINKS_D[1].url);
-  assert.strictEqual(activeIndex(ctx.documentStub.getElementById('qualityList')), 1);
+  assert.strictEqual(activeIndex(qualityList), 1);
   console.log('PASS new episode recalculates automatic selection');
 
-  console.log('app quality-flow tests passed');
+  console.log('player quality-flow tests passed');
 }
 
 main().catch((error) => {

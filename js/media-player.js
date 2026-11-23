@@ -214,7 +214,11 @@ var MediaPlayer = (function () {
       autoplay: true,
       initTimer: null,
       resumeTime: null,
-      playingNotified: false
+      playingNotified: false,
+      audioTracks: [],
+      currentAudioIndex: -1,
+      audioSignature: null,
+      audioListeners: []
     };
 
     function onError(message, fatal) {
@@ -223,6 +227,135 @@ var MediaPlayer = (function () {
 
     function onStatus(kind) {
       if (handlers.onStatus) handlers.onStatus(kind);
+    }
+
+    // ── Real audio-track discovery ────────────────────────────────
+    // Only metadata exposed by HLS.js or native video.audioTracks is used.
+    // Direct MP4 files with no exposed metadata produce an empty list.
+    function notifyAudioTracks() {
+      var snapshot = s.audioTracks.slice();
+      if (handlers.onAudioTracksChanged) {
+        try { handlers.onAudioTracksChanged(snapshot, s.currentAudioIndex); } catch (e) {}
+      }
+      s.audioListeners.slice().forEach(function (fn) {
+        try { fn(snapshot, s.currentAudioIndex); } catch (e) {}
+      });
+    }
+
+    function hlsTrackIndex() {
+      return (s.hls && typeof s.hls.audioTrack === 'number') ? s.hls.audioTrack : -1;
+    }
+
+    function hlsTracks() {
+      var raw = (s.hls && s.hls.audioTracks) || [];
+      var selected = hlsTrackIndex();
+      return Array.prototype.map.call(raw, function (track, i) {
+        var attrs = track.attrs || {};
+        var lang = track.lang || track.language || attrs.LANGUAGE || attrs.language || '';
+        var label = track.name || track.label || lang || ('Track ' + (i + 1));
+        return {
+          index: i,
+          id: track.id !== undefined && track.id !== null ? track.id : i,
+          groupId: track.groupId || attrs['GROUP-ID'] || '',
+          language: String(lang || ''),
+          label: String(label || ''),
+          characteristics: track.characteristics || attrs.CHARACTERISTICS || attrs.characteristics || '',
+          default: !!(track.default || attrs.DEFAULT || attrs.default),
+          selected: i === selected,
+          source: 'hls.js'
+        };
+      });
+    }
+
+    function nativeTracks() {
+      var list = video.audioTracks;
+      if (!list || !list.length) return [];
+      return Array.prototype.map.call(list, function (track, i) {
+        var lang = track.language || track.lang || '';
+        return {
+          index: i,
+          id: track.id !== undefined && track.id !== null ? track.id : i,
+          groupId: '',
+          language: String(lang || ''),
+          label: String(track.label || lang || ('Track ' + (i + 1)) || ''),
+          characteristics: String(track.characteristics || ''),
+          default: !!track.default,
+          selected: !!track.enabled,
+          source: 'native'
+        };
+      });
+    }
+
+    function trackSignature(tracks) {
+      return tracks.map(function (t) {
+        return [t.index, t.id, t.language, t.label, t.characteristics,
+                t.default ? 1 : 0, t.selected ? 1 : 0].join(':');
+      }).join('|');
+    }
+
+    function resetAudioState() {
+      s.audioTracks = [];
+      s.currentAudioIndex = -1;
+      s.audioSignature = null;
+      notifyAudioTracks();
+    }
+
+    function refreshAudioTracks(force) {
+      var tracks = [];
+      if (s.kind === 'hls.js' && s.hls) tracks = hlsTracks();
+      else if (video.audioTracks && video.audioTracks.length) tracks = nativeTracks();
+
+      var signature = trackSignature(tracks);
+      if (!force && signature === s.audioSignature) return;
+
+      s.audioTracks = tracks;
+      s.audioSignature = signature;
+      s.currentAudioIndex = tracks.length
+        ? (tracks.filter(function (t) { return t.selected; })[0] || tracks[0]).index
+        : -1;
+      notifyAudioTracks();
+    }
+
+    function getAudioTracks() { return s.audioTracks.slice(); }
+
+    function getCurrentAudioTrack() {
+      if (!s.audioTracks.length) return -1;
+      if (s.kind === 'hls.js' && s.hls) {
+        var idx = hlsTrackIndex();
+        return (idx >= 0 && idx < s.audioTracks.length) ? idx : s.currentAudioIndex;
+      }
+      return s.currentAudioIndex;
+    }
+
+    function setAudioTrack(index) {
+      index = Number(index);
+      if (!isFinite(index) || index < 0 || index >= s.audioTracks.length) return false;
+
+      if (s.kind === 'hls.js' && s.hls && s.hls.audioTracks && s.hls.audioTracks.length) {
+        try { s.hls.audioTrack = index; } catch (e) { return false; }
+      } else if (video.audioTracks && video.audioTracks.length) {
+        try {
+          for (var i = 0; i < video.audioTracks.length; i++) {
+            video.audioTracks[i].enabled = (i === index);
+          }
+        } catch (e) { return false; }
+      } else {
+        return false;
+      }
+      s.currentAudioIndex = index;
+      refreshAudioTracks(true);
+      return true;
+    }
+
+    function onAudioTracksChanged(fn) {
+      if (typeof fn !== 'function') return function () {};
+      s.audioListeners.push(fn);
+      var removed = false;
+      return function () {
+        if (removed) return;
+        removed = true;
+        s.audioListeners = s.audioListeners.filter(function (f) { return f !== fn; });
+      };
     }
 
     // play() is only attempted after a user action. If Safari blocks it, we
@@ -265,11 +398,13 @@ var MediaPlayer = (function () {
 
     function onLoadedMetadata() {
       applyResumeTime();
+      refreshAudioTracks();
     }
 
     function onPlaying() {
       if (!s.url || s.playingNotified) return;
       applyResumeTime();
+      refreshAudioTracks();
       s.playingNotified = true;
       if (handlers.onPlaying) {
         handlers.onPlaying({ url: s.url, kind: s.kind });
@@ -342,9 +477,19 @@ var MediaPlayer = (function () {
         useFallback(token, 'HLS manifest did not load in time');
       }, HLS_INIT_TIMEOUT_MS);
 
+      var hlsEvents = (window.Hls && window.Hls.Events) || {};
+      ['AUDIO_TRACKS_UPDATED', 'AUDIO_TRACK_SWITCHED'].forEach(function (name) {
+        if (!hlsEvents[name]) return;
+        s.hls.on(hlsEvents[name], function () {
+          if (token !== s.token || !s.hls) return;
+          refreshAudioTracks(true);
+        });
+      });
+
       s.hls.on(window.Hls.Events.MANIFEST_PARSED, function () {
         if (token !== s.token) return;
         if (s.initTimer) { clearTimeout(s.initTimer); s.initTimer = null; }
+        refreshAudioTracks(true);
         safePlay();
       });
       s.hls.on(window.Hls.Events.ERROR, function (event, data) {
@@ -360,6 +505,7 @@ var MediaPlayer = (function () {
       onStatus('native-hls');
       video.src = url;
       try { video.load(); } catch (e) {}
+      refreshAudioTracks();
       safePlay();
     }
 
@@ -368,6 +514,7 @@ var MediaPlayer = (function () {
       s.kind = 'direct';
       onStatus('direct');
       video.src = url;
+      refreshAudioTracks(true);
       try { video.load(); } catch (e) {}
       safePlay();
     }
@@ -405,6 +552,7 @@ var MediaPlayer = (function () {
       s.fallbackUsed = false;
       s.playingNotified = false;
       s.resumeTime = canResume ? video.currentTime : null;
+      resetAudioState();
 
       teardownHls();
       clearVideo();
@@ -433,6 +581,7 @@ var MediaPlayer = (function () {
       video.removeEventListener('error', onVideoError);
       video.removeEventListener('playing', onPlaying);
       video.removeEventListener('loadedmetadata', onLoadedMetadata);
+      resetAudioState();
       clearVideo();
     }
 
@@ -443,8 +592,13 @@ var MediaPlayer = (function () {
         if (s.hls && typeof s.hls.startLoad === 'function') {
           try { s.hls.startLoad(); } catch (e) {}
         }
+        refreshAudioTracks();
       },
-      kind: function () { return s.kind; }
+      kind: function () { return s.kind; },
+      getAudioTracks: getAudioTracks,
+      getCurrentAudioTrack: getCurrentAudioTrack,
+      setAudioTrack: setAudioTrack,
+      onAudioTracksChanged: onAudioTracksChanged
     };
   }
 

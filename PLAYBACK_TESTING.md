@@ -65,16 +65,32 @@ Same as Android Chrome. Firefox supports MSE and should use HLS.js for `.m3u8` l
 - Block `cdn.jsdelivr.net`: HLS qualities show a clear warning and fall back to `ORG`; direct MP4 still works.
 - Wait until a signed link expires, then reload without re-resolving: the stream fails with an expiry hint. The app always resolves fresh links when playback starts.
 
+## Custom player controls
+
+The deployed player uses a custom HTML5 UI (`css/player.css`, `js/player-ui.js`) on top of `PlayerController`. There are no native `controls`.
+
+- Mouse/touch: click the timeline to seek; hover for a time preview; drag the volume slider; large buttons for play/pause, ±10 s, mute, fullscreen, subtitles, and settings.
+- Keyboard/TV: `Space` play/pause, `←`/`→` seek 10 s, `↑`/`↓` volume, `M` mute, `F` fullscreen, `Escape` closes menus first, then the player. Text inputs are ignored. Settings rows/options are focusable, support Enter/OK, and arrow keys move focus inside the open panel.
+- Controls fade out after ~3 s while playing, return on pointer/keyboard/touch activity, and stay visible when paused or while a settings panel is open.
+- The gear menu has Quality, Subtitles, subtitle language/provider/size/background, and Playback speed. **Audio & Languages** appears only when the playback adapter reports more than one real selectable track (hls.js `AUDIO_TRACKS_UPDATED` / `AUDIO_TRACK_SWITCHED` / `hls.audioTracks`, or native `video.audioTracks`). Direct MP4 with no metadata never shows the row and never invents languages.
+
+## Subtitle providers
+
+The player asks the Showbox API `/api/subtitles/search` with `provider=auto|mysubs|subtitles-website`. `auto` keeps the original MySubs-first behavior. The local API patch in `../Showbox-api/api/src/SubtitlesAPI.js` and `server.js` adds provider routing and returns `languages` from real provider metadata. The browser only lists languages returned by the API and falls back to `subtitle.lang` when an older deployment omits `languages`. Deploy that API change before expecting forced provider switching on the live site; the current deployed endpoint still ignores `provider`.
+
 ## Automated tests
 
 No browser is required for these checks:
 
 ```bash
+cd Ktv
+for f in js/*.js tests/*.js; do node --check "$f"; done
 node tests/media-player-quality.test.js
 node tests/app-quality-flow.test.js
+node tests/player-features.test.js
 ```
 
-Coverage includes slow-2g, 2g, Save Data, 3g, 4g low/high downlink, unavailable API, fast/slow/failed bandwidth probe, conflicting hints, missing labels, one available quality, different API ordering, manual override, new movie/episode reset, persisted preference, HLS.js unavailable, native HLS, HLS.js initialization, failed manifest/segment requests, and direct-source position preservation.
+Coverage includes slow-2g, 2g, Save Data, 3g, 4g low/high downlink, unavailable API, fast/slow/failed bandwidth probe, conflicting hints, missing labels, one available quality, different API ordering, manual override, new movie/episode reset, persisted preference, HLS.js unavailable, native HLS, HLS.js initialization, failed manifest/segment requests, direct-source position preservation, audio-track gating and preservation across quality switches, subtitle controls, keyboard shortcuts, control auto-hide, and preserved friendly error messages.
 
 ## Known upstream limitations
 

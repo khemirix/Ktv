@@ -16,8 +16,6 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
   var params = new URLSearchParams(window.location.search);
   var currentTab = params.get('tab') === 'tv' ? 'tv' : 'movies';
 
-  var _subs = null;           // active subtitle controller
-  var _player = null;         // active MediaPlayer controller
   var _imdbCache = {};        // tmdbId -> imdbId
   var _tvContext = null;      // active series context for the player panel
   var _detailsContext = null; // active details modal context
@@ -92,8 +90,9 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
       var scope = document;
       var playerModal = document.getElementById('playerModal');
       var detailsModal = document.getElementById('detailsModal');
-      if (playerModal && playerModal.classList.contains('active')) scope = playerModal;
-      else if (detailsModal && !detailsModal.hidden) scope = detailsModal;
+      // The custom player owns its own keyboard/TV navigation.
+      if (playerModal && playerModal.classList.contains('active')) return;
+      if (detailsModal && !detailsModal.hidden) scope = detailsModal;
 
       var focusable = Array.prototype.slice.call(scope.querySelectorAll('[tabindex="0"]:not([disabled])'))
         .filter(function (el) { return el.offsetParent !== null; });
@@ -118,272 +117,39 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
     });
   }
 
-  // ── Player helpers (quality / subtitles / fullscreen preserved) ──
-  function setPlayerState(state) {
-    document.getElementById('playerStateLoading').hidden = state !== 'loading';
-    document.getElementById('playerStateVideo').hidden = state !== 'video';
-    document.getElementById('playerStateError').hidden = state !== 'error';
-  }
+  // ── Player delegation ───────────────────────────────────────────
+  // Playback, quality, subtitles, audio, fullscreen, and keyboard handling
+  // live in PlayerController + PlayerUI. This file only supplies metadata and
+  // episode context to them.
+  var player = PlayerController.create({ video: document.getElementById('playerVideo') });
+  var playerUi = PlayerUI.create(player, { onClose: closePlayer });
+  window.KtvPlayer = player;
+  window.KtvPlayerUI = playerUi;
 
   function showPlaybackError(message) {
-    var el = document.getElementById('playerErrorMsg');
-    if (el) el.textContent = message;
-    setPlayerState('error');
+    player.showError(message);
   }
 
   function openModal() {
-    document.getElementById('playerModal').classList.add('active');
+    playerUi.open();
     updateBodyLock();
   }
 
   function closePlayer() {
-    var modal = document.getElementById('playerModal');
-    var video = document.getElementById('playerVideo');
-    _playToken += 1;
-    if (video) video._subToken = (video._subToken || 0) + 1;
-    if (_player) { _player.destroy(); _player = null; }
-    if (_subs) { _subs.destroy(); _subs = null; }
-    closeSettingsMenu();
-    modal.classList.remove('active');
+    player.close();
+    playerUi.close();
     _tvContext = null;
     updateBodyLock();
-    if (document.fullscreenElement) document.exitFullscreen().catch(function () {});
-  }
-
-  function setSubtitleButton(status, name) {
-    var btn = document.getElementById('subtitleToggle');
-    var menuBtn = document.getElementById('menuSubtitleToggle');
-    var on = status === 'on';
-    var disabled = (status === 'loading' || status === 'none');
-    var text = status === 'loading' ? 'Arabic subtitles: Loading…'
-      : status === 'none' ? 'Arabic subtitles: unavailable'
-      : on ? 'Arabic subtitles: On' : 'Arabic subtitles: Off';
-
-    if (btn) {
-      btn.disabled = disabled;
-      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-      btn.title = text;
-    }
-    if (menuBtn) {
-      menuBtn.disabled = disabled;
-      menuBtn.textContent = name ? text + ' · ' + name : text;
+    if (document.fullscreenElement && document.exitFullscreen) {
+      document.exitFullscreen().catch(function () {});
     }
   }
 
-  function setQualityBadge(text, title) {
-    var badge = document.getElementById('qualityBadge');
-    if (!badge) return;
-    badge.textContent = text || '—';
-    if (title) badge.title = title;
+  function playLinks(links, title, opts) {
+    openModal();
+    return player.open(links, title, opts || {});
   }
 
-  function closeSettingsMenu() {
-    var menu = document.getElementById('settingsMenu');
-    if (menu) menu.hidden = true;
-  }
-
-  var QUALITY_PREF_KEY = 'ktv_quality_pref';
-  var _activeQualityLabel = '';
-  var _playToken = 0;
-
-  function storageGet(key) {
-    try { return localStorage.getItem(key) || ''; } catch (e) { return ''; }
-  }
-
-  function storageSet(key, value) {
-    try { localStorage.setItem(key, value); } catch (e) {}
-  }
-
-  function storageRemove(key) {
-    try { localStorage.removeItem(key); } catch (e) {}
-  }
-
-  function qualityLabel(link, index) {
-    return (link && (link.quality || link.name)) || ('Link ' + (index + 1));
-  }
-
-  function findQualityIndex(links, label) {
-    if (!label) return -1;
-    var target = String(label).toLowerCase();
-    for (var i = 0; i < links.length; i++) {
-      if (String(qualityLabel(links[i], i)).toLowerCase() === target) return i;
-    }
-    return -1;
-  }
-
-  function updateRememberButton() {
-    var btn = document.getElementById('rememberQuality');
-    if (!btn) return;
-    var pref = storageGet(QUALITY_PREF_KEY);
-    btn.setAttribute('aria-pressed', pref ? 'true' : 'false');
-    btn.textContent = pref
-      ? 'Remember quality: ' + pref + ' (tap to clear)'
-      : 'Remember quality: Off';
-    btn.disabled = !_activeQualityLabel && !pref;
-  }
-
-  var SUB_STYLE_ID = 'ktvSubtitleStyle';
-  var SUB_SIZES = { small: '0.9rem', medium: '1.15rem', large: '1.45rem', xlarge: '1.8rem' };
-  var SUB_BGS = { none: 'transparent', dark: 'rgba(0,0,0,.65)', solid: '#000' };
-
-  function applySubtitleStyle() {
-    var size = localStorage.getItem('ktv_sub_size') || 'medium';
-    var bg = localStorage.getItem('ktv_sub_bg') || 'dark';
-    if (!SUB_SIZES[size]) size = 'medium';
-    if (!SUB_BGS[bg]) bg = 'dark';
-
-    var style = document.getElementById(SUB_STYLE_ID);
-    if (!style) {
-      style = document.createElement('style');
-      style.id = SUB_STYLE_ID;
-      document.head.appendChild(style);
-    }
-    style.textContent =
-      '#playerVideo::cue { direction: rtl; text-align: right; color: #fff;' +
-      'font-size: ' + SUB_SIZES[size] + '; background: ' + SUB_BGS[bg] + '; }';
-
-    document.querySelectorAll('#subtitleSizeOptions .settings-option').forEach(function (b) {
-      b.classList.toggle('active', b.getAttribute('data-size') === size);
-    });
-    document.querySelectorAll('#subtitleBgOptions .settings-option').forEach(function (b) {
-      b.classList.toggle('active', b.getAttribute('data-bg') === bg);
-    });
-  }
-
-  async function subtitleMeta(opts) {
-    opts = opts || {};
-    var meta = {
-      imdbId: opts.imdbId || null,
-      type: opts.type || 'movie',
-      season: opts.season,
-      episode: opts.episode
-    };
-    if (!meta.imdbId && opts.tmdbId) {
-      var cacheKey = meta.type + ':' + opts.tmdbId;
-      if (!_imdbCache[cacheKey]) {
-        _imdbCache[cacheKey] = await TMDB.getImdbId(meta.type, opts.tmdbId);
-      }
-      meta.imdbId = _imdbCache[cacheKey];
-    }
-    return meta;
-  }
-
-  async function playLinks(links, title, opts) {
-    var playToken = ++_playToken;
-    var video = document.getElementById('playerVideo');
-    var qualityList = document.getElementById('qualityList');
-    var titleEl = document.getElementById('playerTitle');
-
-    titleEl.textContent = title || '';
-    setPlayerState('video');
-
-    if (_subs) { _subs.destroy(); _subs = null; }
-    var token = (video._subToken || 0) + 1;
-    video._subToken = token;
-    setSubtitleButton('loading');
-
-    if (!links || !links.length) {
-      showPlaybackError('No stream links are available for this title right now');
-      return;
-    }
-
-    var tier = await MediaPlayer.estimateNetworkTier();
-    if (playToken !== _playToken) return;
-
-    var prefIndex = findQualityIndex(links, storageGet(QUALITY_PREF_KEY));
-    var defaultIndex = prefIndex >= 0
-      ? prefIndex
-      : MediaPlayer.chooseDefault(links, tier);
-    var defaultLabel = qualityLabel(links[defaultIndex], defaultIndex);
-    var fallbackUrl = MediaPlayer.fallbackFor(links, tier);
-
-    var hint = prefIndex >= 0
-      ? 'Saved quality preference: ' + defaultLabel
-      : tier === 'high'
-        ? 'Highest quality selected automatically for a fast connection'
-        : tier === 'low'
-          ? 'Lowest quality selected automatically for a slow connection'
-          : tier === 'medium'
-            ? 'Balanced quality selected automatically for your connection'
-            : 'Conservative quality selected automatically — network speed unavailable';
-
-    _activeQualityLabel = '';
-    updateRememberButton();
-    setQualityBadge('Loading ' + defaultLabel + '…', hint);
-
-    if (_player) _player.destroy();
-    _player = MediaPlayer.create(video, {
-      onError: function (message, fatal) {
-        if (fatal) showPlaybackError(message);
-        else console.warn('[Ktv player] ' + message);
-      },
-      onAutoplayBlocked: function () {
-        // Native controls stay visible; the user can tap play manually.
-      },
-      onPlaying: function (info) {
-        if (playToken !== _playToken) return;
-        if (info.url !== selectedUrl && info.url !== fallbackUrl) return;
-        markQualityByUrl(info.url);
-      }
-    });
-
-    var selectedUrl = links[defaultIndex].url;
-    var buttons = [];
-
-    function markQuality(index) {
-      buttons.forEach(function (b) { b.classList.remove('active'); });
-      if (buttons[index]) buttons[index].classList.add('active');
-      _activeQualityLabel = qualityLabel(links[index], index);
-      setQualityBadge(_activeQualityLabel, hint);
-      updateRememberButton();
-    }
-
-    function markQualityByUrl(url) {
-      for (var i = 0; i < links.length; i++) {
-        if (links[i].url === url) { markQuality(i); return; }
-      }
-      _activeQualityLabel = 'Direct';
-      setQualityBadge('Direct', 'Playing the direct video fallback');
-      updateRememberButton();
-    }
-
-    function selectQuality(index) {
-      if (playToken !== _playToken || !_player) return;
-      var link = links[index];
-      var label = qualityLabel(link, index);
-      if (selectedUrl === link.url) { closeSettingsMenu(); return; }
-      selectedUrl = link.url;
-      _activeQualityLabel = '';
-      buttons.forEach(function (b) { b.classList.remove('active'); });
-      setQualityBadge('Loading ' + label + '…', 'Waiting for ' + label + ' to start');
-      updateRememberButton();
-      _player.load(link.url, {
-        fallbackUrl: (link.url === fallbackUrl) ? '' : fallbackUrl
-      });
-      if (_subs) _subs.resync();
-      closeSettingsMenu();
-    }
-
-    qualityList.innerHTML = '';
-    links.forEach(function (link, i) {
-      var btn = document.createElement('button');
-      btn.className = 'quality-btn';
-      btn.textContent = qualityLabel(link, i);
-      btn.tabIndex = 0;
-      btn.addEventListener('click', function () { selectQuality(i); });
-      buttons.push(btn);
-      qualityList.appendChild(btn);
-    });
-
-    _player.load(links[defaultIndex].url, {
-      fallbackUrl: (links[defaultIndex].url === fallbackUrl) ? '' : fallbackUrl
-    });
-
-    subtitleMeta(opts).then(function (meta) {
-      if (video._subToken !== token) return;
-      _subs = Subtitles.attach(video, meta, setSubtitleButton);
-    });
-  }
 
   // ── Season / episode rendering (shared by details + player panel) ─
   function renderSeasonTabs(container, seasons, onSelect, activeSeason) {
@@ -494,11 +260,11 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
 
   async function playEpisode(season, episode, epName) {
     if (!_tvContext) return;
+    openModal();
     _tvContext.currentSeason = season;
     _tvContext.currentEpisode = episode;
     document.getElementById('playerLoadingTitle').textContent = 'Loading ' + _tvContext.title + ' · S' +
       String(season).padStart(2, '0') + 'E' + String(episode).padStart(2, '0') + '…';
-    setPlayerState('loading');
     try {
       var links = await Resolver.resolveEpisode({
         title: _tvContext.title,
@@ -524,7 +290,6 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
 
     document.getElementById('playerLoadingTitle').textContent = 'Loading "' + title + '"…';
     document.getElementById('episodePanel').hidden = true;
-    setPlayerState('loading');
     openModal();
 
     if (type === 'tv') {
@@ -891,70 +656,16 @@ function _storeItem(item) { var k = ++_cardCounter; _cardItems[k] = item; return
     renderContent(currentTab);
   });
 
-  // ── Player controls / subtitle settings ────────────────────────
-  function toggleSubtitles() {
-    if (!_subs) return;
-    var btn = document.getElementById('subtitleToggle');
-    _subs.setEnabled(btn.getAttribute('aria-pressed') !== 'true');
-  }
-
-  document.getElementById('subtitleToggle').addEventListener('click', toggleSubtitles);
-  document.getElementById('menuSubtitleToggle').addEventListener('click', toggleSubtitles);
-
-  var settingsBtn = document.getElementById('playerSettingsBtn');
-  settingsBtn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    var menu = document.getElementById('settingsMenu');
-    menu.hidden = !menu.hidden;
-  });
-  document.addEventListener('click', function (e) {
-    var menu = document.getElementById('settingsMenu');
-    if (!menu || menu.hidden) return;
-    if (menu.contains(e.target) || settingsBtn.contains(e.target)) return;
-    menu.hidden = true;
-  });
-
-  document.querySelectorAll('#subtitleSizeOptions .settings-option').forEach(function (b) {
-    b.addEventListener('click', function () {
-      localStorage.setItem('ktv_sub_size', b.getAttribute('data-size'));
-      applySubtitleStyle();
-    });
-  });
-  document.querySelectorAll('#subtitleBgOptions .settings-option').forEach(function (b) {
-    b.addEventListener('click', function () {
-      localStorage.setItem('ktv_sub_bg', b.getAttribute('data-bg'));
-      applySubtitleStyle();
-    });
-  });
-
-  var rememberBtn = document.getElementById('rememberQuality');
-  if (rememberBtn) {
-    rememberBtn.addEventListener('click', function () {
-      if (storageGet(QUALITY_PREF_KEY)) {
-        storageRemove(QUALITY_PREF_KEY);
-      } else if (_activeQualityLabel) {
-        storageSet(QUALITY_PREF_KEY, _activeQualityLabel);
-      }
-      updateRememberButton();
-    });
-  }
-  updateRememberButton();
-  applySubtitleStyle();
-
-  document.getElementById('playerClose').addEventListener('click', closePlayer);
-  document.getElementById('playerModal').addEventListener('click', function (e) {
-    if (e.target === this) closePlayer();
-  });
-
+  // Player shortcuts and menus are owned by PlayerUI. This handler only
+  // closes the details modal when no player overlay is active.
   window.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
-    var menu = document.getElementById('settingsMenu');
-    if (menu && !menu.hidden) { menu.hidden = true; return; }
     var playerModal = document.getElementById('playerModal');
     var detailsModal = document.getElementById('detailsModal');
-    if (playerModal.classList.contains('active')) { closePlayer(); return; }
+    if (playerModal && playerModal.classList.contains('active')) return;
     if (detailsModal && !detailsModal.hidden) closeDetails();
   });
+
 
   renderContent(currentTab);
 })();
