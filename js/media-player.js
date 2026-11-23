@@ -358,8 +358,8 @@ var MediaPlayer = (function () {
       };
     }
 
-    // play() is only attempted after a user action. If Safari blocks it, we
-    // leave the native controls visible instead of retrying in a loop.
+    // play() is only attempted after a user action. If Safari blocks it, the
+    // controller shows a hint instead of retrying in a loop.
     function safePlay() {
       if (!s.autoplay) return;
       try {

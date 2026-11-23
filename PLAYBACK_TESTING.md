@@ -45,7 +45,7 @@ The badge shows `Loading <quality>…` until the chosen stream actually starts. 
 1. Play the same title. Safari uses native HLS for `.m3u8`; HLS.js must not be instantiated.
 2. Confirm direct MP4 playback still works when `ORG` is selected.
 3. Confirm fullscreen, seeking, Arabic subtitles, subtitle size/background settings, and quality switching still work.
-4. If autoplay is blocked, tap play once. The implementation catches the rejection and leaves native controls visible; it does not retry `play()` in a loop.
+4. If autoplay is blocked, tap the custom play button once. The implementation catches the rejection, shows a hint, and does not retry `play()` in a loop.
 
 ## HLS.js initialization and failure behavior
 
