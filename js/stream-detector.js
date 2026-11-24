@@ -385,6 +385,7 @@
 
     var lastError = null;
     var directWarning = null;
+    var unsupportedResult = null;
 
     return candidates.reduce(function (chain, candidate) {
       return chain.then(function (result) {
@@ -400,8 +401,15 @@
             }
             return null;
           }
-          return detectionFromProbe(probeResult, candidate.via, url,
+          var detected = detectionFromProbe(probeResult, candidate.via, url,
             options.metadata, env, directWarning ? [directWarning] : []);
+          // A 200 HTML page is not proof that no other route can play the
+          // stream. Keep probing, but remember this result for the user.
+          if (!detected.engine || detected.format === 'unsupported') {
+            if (!unsupportedResult) unsupportedResult = detected;
+            return null;
+          }
+          return detected;
         }, function (err) {
           lastError = {
             kind: candidate.via === 'proxy' ? 'proxy' : 'network',
@@ -412,6 +420,7 @@
       });
     }, Promise.resolve(null)).then(function (result) {
       if (result) return result;
+      if (unsupportedResult) return unsupportedResult;
       if (options.allowMetadataFallback && formatFromMetadata(options.metadata)) {
         var warning = lastError ? lastError.message : 'Direct detection was inconclusive.';
         return metadataDetection(url, options.metadata, env, warning);

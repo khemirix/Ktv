@@ -226,7 +226,25 @@ async function run() {
     global.fetch = original;
   }
 
-  // 10. Byte sniffing helper covers the primary signatures.
+  // 10. An unsupported direct response still tries the proxy.
+  {
+    const original = global.fetch;
+    global.fetch = (url) => {
+      if (String(url).indexOf('proxy.test') !== -1) {
+        return Promise.resolve(response(200, 'video/mp2t', tsBytes()));
+      }
+      return Promise.resolve(response(200, 'text/html', bytesOf('<!doctype html><html>')));
+    };
+    const result = await StreamDetector.detect('http://example.test/needs-proxy', {
+      proxy: 'https://proxy.test',
+      env: { video: videoStub([]), Hls: hlsStub(true), mpegts: mpegtsStub(true) }
+    });
+    ok(result.via === 'proxy', 'unsupported direct response falls through to proxy');
+    ok(result.format === 'mpegts', 'proxy response is used when direct page is unsupported');
+    global.fetch = original;
+  }
+
+  // 11. Byte sniffing helper covers the primary signatures.
   ok(StreamDetector.sniffBytes(bytesOf('#EXTM3U')) === 'hls', 'sniff: playlist');
   ok(StreamDetector.sniffBytes(tsBytes()) === 'mpegts', 'sniff: TS packets');
   ok(StreamDetector.sniffBytes(bytesOf('\x00\x00\x00\x18ftypisom')) === 'mp4', 'sniff: MP4');
