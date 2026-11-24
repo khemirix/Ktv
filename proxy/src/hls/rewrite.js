@@ -7,6 +7,7 @@ function rewritePlaylist(text, sourceUrl, publicBaseUrl) {
   var lines = String(text).split(/\r?\n/);
 
   function proxied(uri) {
+    if (/^(data|blob):/i.test(String(uri).trim())) return uri;
     var resolved;
     try {
       resolved = new URL(uri, source).href;

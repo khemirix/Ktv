@@ -17,6 +17,16 @@ function redirectMethod(status, method) {
   return method || 'GET';
 }
 
+function clientClosedError() {
+  var error = proxyError(499, 'CLIENT_CLOSED', 'The client closed the request.');
+  error.expose = false;
+  return error;
+}
+
+function timedError(code, message) {
+  return proxyError(504, code, message);
+}
+
 // Node may call a custom lookup with { all: true }. In that case the callback
 // must receive an array, otherwise the request fails with ERR_INVALID_IP_ADDRESS.
 function pinnedLookup(target) {
@@ -34,22 +44,81 @@ async function openUpstream(rawUrl, options) {
   options = options || {};
   var redirects = options.redirects || 0;
   var method = options.method || 'GET';
+  var signal = options.signal;
 
+  if (signal && signal.aborted) throw clientClosedError();
+
+  // DNS validation is bounded and retried before any socket is created.
   var validated = await validateUrl(rawUrl, options);
+  if (signal && signal.aborted) throw clientClosedError();
+
   var target = validated.url;
   var transport = transportFor(target.protocol);
 
   return new Promise(function (resolve, reject) {
     var settled = false;
+    var connectTimer = null;
+    var tlsTimer = null;
     var headerTimer = null;
     var idleTimer = null;
+    var responseRef = null;
+
+    function clearConnect() {
+      if (connectTimer) { clearTimeout(connectTimer); connectTimer = null; }
+    }
+    function clearTls() {
+      if (tlsTimer) { clearTimeout(tlsTimer); tlsTimer = null; }
+    }
+    function clearHeader() {
+      if (headerTimer) { clearTimeout(headerTimer); headerTimer = null; }
+    }
+    function clearIdle() {
+      if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+    }
+    function removeAbort() {
+      if (!signal || !onAbort) return;
+      if (typeof signal.removeEventListener === 'function') {
+        signal.removeEventListener('abort', onAbort);
+      } else {
+        signal.onabort = null;
+      }
+      onAbort = null;
+    }
+    function cleanupAll() {
+      clearConnect();
+      clearTls();
+      clearHeader();
+      clearIdle();
+      removeAbort();
+    }
 
     function fail(error) {
       if (settled) return;
       settled = true;
-      if (headerTimer) clearTimeout(headerTimer);
-      if (idleTimer) clearTimeout(idleTimer);
+      cleanupAll();
       reject(error);
+    }
+
+    function destroyWith(error) {
+      try { request.destroy(error); } catch (e) {}
+      fail(error);
+    }
+
+    var onAbort = null;
+    if (signal) {
+      onAbort = function () {
+        if (!settled) fail(clientClosedError());
+        cleanupAll();
+        try { request.destroy(); } catch (e) {}
+        if (responseRef) {
+          try { responseRef.destroy(); } catch (e) {}
+        }
+      };
+      if (typeof signal.addEventListener === 'function') {
+        signal.addEventListener('abort', onAbort);
+      } else {
+        signal.onabort = onAbort;
+      }
     }
 
     var requestOptions = {
@@ -62,9 +131,27 @@ async function openUpstream(rawUrl, options) {
             dnsCallback.lookup(hostname, dnsOptions, callback);
           }
     };
+    if (target.protocol === 'https:' && options.rejectUnauthorized === false) {
+      // Test-only escape hatch for local self-signed fixtures.
+      requestOptions.rejectUnauthorized = false;
+    }
 
     var request = transport.request(target, requestOptions, function (response) {
-      if (headerTimer) { clearTimeout(headerTimer); headerTimer = null; }
+      responseRef = response;
+      clearConnect();
+      clearTls();
+      clearHeader();
+
+      if (settled) {
+        try { response.destroy(); } catch (e) {}
+        return;
+      }
+
+      response.on('error', function () {});
+      response.once('close', function () {
+        clearIdle();
+        removeAbort();
+      });
 
       var status = response.statusCode || 0;
       var location = response.headers && response.headers.location;
@@ -87,19 +174,21 @@ async function openUpstream(rawUrl, options) {
         });
         // A localhost-only test allowance must never apply to redirect hops.
         if (!options.allowPrivateRedirects) redirectOptions.allowPrivate = false;
-        openUpstream(nextUrl, redirectOptions).then(resolve, fail);
+        openUpstream(nextUrl, redirectOptions).then(function (opened) {
+          removeAbort();
+          resolve(opened);
+        }, fail);
         return;
       }
 
-      // Upstream 4xx/5xx responses are returned so callers can preserve the
-      // provider's status code. Detection routes convert them to safe errors.
-      var idle = options.idleTimeoutMs || config.idleTimeoutMs;
+      // Idle timeout protects live connections without buffering stream data.
+      var idleMs = options.idleTimeoutMs || config.idleTimeoutMs;
       idleTimer = setTimeout(function () {
-        try { response.destroy(); } catch (e) {}
-      }, idle);
-      response.on('close', function () {
-        if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
-      });
+        try {
+          response.destroy(timedError('STREAM_IDLE_TIMEOUT',
+            'The upstream stream stopped sending data.'));
+        } catch (e) {}
+      }, idleMs);
 
       settled = true;
       resolve({
@@ -112,19 +201,54 @@ async function openUpstream(rawUrl, options) {
       });
     });
 
+    request.on('socket', function (socket) {
+      if (!socket || settled) return;
+      if (socket.connecting) {
+        connectTimer = setTimeout(function () {
+          destroyWith(timedError('CONNECT_TIMEOUT',
+            'The connection to the stream host timed out.'));
+        }, options.connectTimeoutMs || config.connectTimeoutMs);
+        socket.once('connect', function () {
+          clearConnect();
+          if (target.protocol !== 'https:') clearTls();
+        });
+        if (target.protocol === 'https:') {
+          tlsTimer = setTimeout(function () {
+            destroyWith(timedError('TLS_TIMEOUT',
+              'The secure handshake with the stream host timed out.'));
+          }, options.tlsTimeoutMs || config.tlsTimeoutMs);
+          socket.once('secureConnect', clearTls);
+        }
+      } else {
+        clearConnect();
+        if (target.protocol === 'https:' && socket.encrypted) clearTls();
+      }
+    });
+
     request.on('error', function (err) {
-      if (err && err.code && err.status) { fail(err); return; }
+      if (err && err.status) { fail(err); return; }
       safeLog('upstream', 'connection failed', rawUrl);
-      fail(proxyError(502, 'UPSTREAM_UNREACHABLE',
-        'The upstream stream could not be reached.'));
+      var code = err && err.code;
+      var mapped;
+      if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
+        mapped = proxyError(502, 'DNS_FAILURE', 'The stream host could not be resolved.');
+      } else if (code === 'ETIMEDOUT') {
+        mapped = timedError('CONNECT_TIMEOUT', 'The connection to the stream host timed out.');
+      } else {
+        mapped = proxyError(502, 'UPSTREAM_UNREACHABLE',
+          'The upstream stream could not be reached.');
+      }
+      fail(mapped);
     });
 
     request.setNoDelay && request.setNoDelay(true);
-    var headersTimeout = options.headersTimeoutMs || config.headersTimeoutMs;
+
+    // Overall headers cap. Connect and TLS have their own shorter timers so a
+    // slow provider is not reported as a generic timeout.
     headerTimer = setTimeout(function () {
-      try { request.destroy(proxyError(504, 'UPSTREAM_TIMEOUT',
-        'The upstream stream did not respond in time.')); } catch (e) {}
-    }, headersTimeout);
+      destroyWith(timedError('UPSTREAM_TIMEOUT',
+        'The upstream stream did not respond in time.'));
+    }, options.headersTimeoutMs || config.headersTimeoutMs);
 
     request.end();
   });

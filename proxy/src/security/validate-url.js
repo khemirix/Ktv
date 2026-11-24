@@ -6,6 +6,74 @@ const { isUnsafeIp } = require('./ip');
 const { config } = require('../config');
 const { proxyError } = require('../utils/errors');
 
+function sleep(ms) {
+  return new Promise(function (resolve) { setTimeout(resolve, ms); });
+}
+
+// dns.lookup runs on libuv's threadpool, so this never blocks the event loop.
+// The timeout only stops waiting; a late successful lookup is harmless.
+function withTimeout(value, ms, code, message) {
+  return new Promise(function (resolve, reject) {
+    var done = false;
+    var timer = setTimeout(function () {
+      if (done) return;
+      done = true;
+      reject(proxyError(504, code, message));
+    }, ms);
+
+    Promise.resolve(value).then(function (result) {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(result);
+    }, function (err) {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+}
+
+async function lookupWithRetry(hostname, options) {
+  var timeoutMs = options.dnsTimeoutMs || config.dnsTimeoutMs;
+  var retries = typeof options.dnsRetries === 'number'
+    ? options.dnsRetries : config.dnsRetries;
+  var retryDelayMs = typeof options.dnsRetryDelayMs === 'number'
+    ? options.dnsRetryDelayMs : config.dnsRetryDelayMs;
+  var lookup = options.dnsLookup || dns.lookup;
+  var lastCode = 'DNS_FAILURE';
+
+  for (var attempt = 0; attempt <= retries; attempt += 1) {
+    // A second pass with verbatim disabled works around resolvers that return
+    // unusable IPv6 records first. All records are still SSRF-validated.
+    var verbatim = attempt % 2 === 0;
+    try {
+      var records = await withTimeout(
+        lookup(hostname, { all: true, verbatim: verbatim }),
+        timeoutMs,
+        'DNS_TIMEOUT',
+        'The stream host lookup timed out.'
+      );
+      if (records && records.length) return records;
+      lastCode = 'DNS_FAILURE';
+    } catch (err) {
+      lastCode = err && err.code === 'DNS_TIMEOUT' ? 'DNS_TIMEOUT' : 'DNS_FAILURE';
+    }
+    if (attempt < retries && retryDelayMs > 0) await sleep(retryDelayMs);
+  }
+
+  var error = proxyError(
+    lastCode === 'DNS_TIMEOUT' ? 504 : 502,
+    lastCode,
+    lastCode === 'DNS_TIMEOUT'
+      ? 'The stream host lookup timed out.'
+      : 'The stream host could not be resolved.'
+  );
+  error.details = ['Tried ' + (retries + 1) + ' DNS lookup attempt(s).'];
+  throw error;
+}
+
 async function resolveSafeAddress(hostname, options) {
   if (net.isIP(hostname)) {
     var family = net.isIP(hostname);
@@ -15,21 +83,13 @@ async function resolveSafeAddress(hostname, options) {
     return { address: hostname, family: family };
   }
 
-  var records;
-  try {
-    records = await dns.lookup(hostname, { all: true, verbatim: true });
-  } catch (e) {
-    throw proxyError(502, 'DNS_FAILURE', 'The stream host could not be resolved.');
-  }
-  if (!records || !records.length) {
-    throw proxyError(502, 'DNS_FAILURE', 'The stream host could not be resolved.');
-  }
-
+  var records = await lookupWithRetry(hostname, options || {});
   var safe = records.filter(function (record) { return !isUnsafeIp(record.address); });
   if (!safe.length) {
     throw proxyError(403, 'BLOCKED_ADDRESS', 'The stream host is not allowed.');
   }
-  // Prefer IPv4 for compatibility with hosts that have no IPv6 route.
+
+  // Prefer IPv4, but allow public IPv6 when no IPv4 record is available.
   var ipv4 = safe.filter(function (record) { return record.family === 4; });
   var chosen = ipv4[0] || safe[0];
   return { address: chosen.address, family: chosen.family };
@@ -83,4 +143,4 @@ async function validateUrl(raw, options) {
   };
 }
 
-module.exports = { validateUrl, resolveSafeAddress };
+module.exports = { validateUrl, resolveSafeAddress, lookupWithRetry };

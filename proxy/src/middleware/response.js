@@ -21,7 +21,14 @@ function sendError(res, status, code, message, extra) {
 
 function sendRouteError(res, err) {
   if (err instanceof ProxyError && err.expose) {
-    sendError(res, err.status || 500, err.code, err.message);
+    sendJson(res, err.status || 500, {
+      ok: false,
+      error: {
+        code: err.code,
+        message: err.message,
+        details: err.details || []
+      }
+    });
     return;
   }
   sendError(res, 500, 'INTERNAL_ERROR', 'The proxy could not complete the request.');

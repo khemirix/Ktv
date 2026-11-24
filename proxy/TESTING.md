@@ -37,7 +37,10 @@ Command:
 cd proxy && npm test
 ```
 
-Result: **18/18 tests passed**.
+Result: **30/30 tests passed** (detection, progressive forwarding, Range/HEAD,
+client disconnect, live streams, safe errors, frontend client retry/abort,
+health, HLS rewriting, HTTPS HLS, slow headers, DNS classification/retry,
+HTTP→HTTPS redirects, nested playlists, and security).
 
 Existing website regression command from the repository root:
 
@@ -45,8 +48,10 @@ Existing website regression command from the repository root:
 node --test tests/*.test.js
 ```
 
-Result: **5/5 suites passed** (32 stream-detector checks, 19 live-player checks,
-media-player quality, app quality flow, and player feature suites).
+Result: **9/9 tests passed across 6 files** (stream-detector checks,
+live-player checks, media-player quality, app quality flow, player features,
+and 4 new Live TV integration assertions). No real provider playback was
+performed by the automated suite.
 
 No real provider playback was performed by the automated suite.
 
@@ -69,34 +74,44 @@ No real provider playback was performed by the automated suite.
 | 11 | Invalid URL | `url=not-a-url`, `ftp://...`, and a missing `url` parameter | HTTP `400` with codes `INVALID_URL`, `INVALID_PROTOCOL`, or `MISSING_URL`. |
 | 12 | Private IP rejection | `url=http://127.0.0.1:10000/health` | HTTP `403` `BLOCKED_ADDRESS`. |
 | 13 | Redirect to private IP | Use a local mock redirect to `http://127.0.0.1/...` | Redirect is rejected before connection; HTTP `403` `BLOCKED_ADDRESS`. |
-| 14 | Upstream timeout | Point to a mock server that never sends headers | HTTP `504` `UPSTREAM_TIMEOUT` after the configured timeout. |
-| 15 | Upstream connection failure | Point to an unused local port | HTTP `502` `UPSTREAM_UNREACHABLE`. |
-| 16 | Client disconnect | Start a long TS stream, then close the browser tab or abort the request | Proxy closes upstream socket; no leak appears in `/health` `activeStreams`. |
-| 17 | Long-running live connection | Play a live TS channel for several minutes | First frames arrive immediately; connection stays healthy; no growing memory in the proxy process. |
-| 18 | Auth query parameters | Play a tokenized HLS playlist locally | Playlist and segment/key URLs retain query parameters after rewriting; tokens are not logged. |
+| 14 | Slow but working upstream | Point to a mock that delays headers by 250 ms | Detection succeeds with the default 20 s header budget. |
+| 15 | Upstream header timeout | Point to a mock that delays headers beyond `HEADERS_TIMEOUT_MS` | HTTP `504` `UPSTREAM_TIMEOUT`; the upstream socket closes. |
+| 16 | DNS failure/retry | Point to a hostname that cannot resolve | HTTP `502` `DNS_FAILURE` with safe details after bounded retries. |
+| 17 | Upstream connection failure | Point to an unused local port | HTTP `502` `UPSTREAM_UNREACHABLE`. |
+| 18 | Client disconnect | Start a long TS stream, then close the browser tab or abort the request | Proxy closes upstream socket; no leak appears in `/health` `activeStreams`. |
+| 19 | Long-running live connection | Play a live TS channel for several minutes | First frames arrive immediately; connection stays healthy; no growing memory in the proxy process. |
+| 20 | Auth query parameters | Play a tokenized HLS playlist locally | Playlist and segment/key URLs retain query parameters after rewriting; tokens are not logged. |
 
 ---
 
 ## Manual Live TV page checks
 
 1. Open `tv.html`. Categories, search, logos, and channel selection must work
-   exactly as before. The proxy URL now comes from `js/smart-proxy-config.js`,
-   so the loader should mention Smart Proxy on channel selection.
-2. Open `tv.html?proxy=off` to confirm the original direct-detector path still
-   works with no code changes. `?proxy=http://localhost:10000` can be used for
-   a local backend during development.
-3. Select a known HLS channel. Loader should mention Smart Proxy, then
-   `LIVE`; Network tab should show `/api/detect` followed by `/api/stream`.
-4. Select a known `.ts` channel and an extensionless channel locally. The
-   correct engine should start without multiple players being created.
-5. Stop/switch channels repeatedly. The previous `/api/detect` request should
-   be aborted and `activeStreams` should return to `0` or a small number.
-6. Temporarily stop the proxy and select a channel. A visible diagnostic should
-   appear, then the original detector path should take over.
-7. Repeat channel selection in an Android browser. Playback and controls must
+   exactly as before. The proxy URL comes only from
+   `js/smart-proxy-config.js`.
+2. Select an HTTPS channel. Direct detection is attempted first; the Smart
+   Proxy is used only if direct detection fails. The Network tab should not
+   show `/api/detect` for an HTTPS channel that plays directly.
+3. Select an HTTP channel on the HTTPS site. The Network tab must show
+   `/api/detect` (then `/api/stream`) and must never show a direct HTTP media
+   request. A Mixed Content error must not appear.
+4. Open `tv.html?proxy=off`. HTTPS channels use the original direct-detector
+   path. Selecting an HTTP channel on HTTPS shows a clear error instead of
+   attempting a blocked direct request.
+5. `?proxy=http://localhost:10000` can be used for a local backend during
+   development; no other file needs editing.
+6. Select a known HLS, `.ts`, and extensionless channel. The correct engine
+   starts without multiple players being created.
+7. Stop/switch channels repeatedly. Previous `/api/detect` and `/api/stream`
+   requests are aborted on both client and backend; `activeStreams` returns to
+   `0` or a small number.
+8. Temporarily stop the proxy and select an HTTP channel on HTTPS. A readable
+   proxy error appears (no silent fallback). Select an HTTPS channel: direct
+   playback still works.
+9. Repeat channel selection in an Android browser. Playback and controls must
    remain unchanged; `AbortController` is feature-detected.
-8. Open an existing movie/TV-show page and play one item. Those players must
-   remain unchanged.
+10. Open an existing movie/TV-show page and play one item. Those players must
+    remain unchanged.
 
 Movies and TV Shows use `js/media-player.js` and are not routed through this
 proxy. Verify their audio-track, quality, and subtitle controls remain

@@ -11,9 +11,23 @@ services:
       - key: SMART_PROXY_PUBLIC_BASE_URL
         sync: false
       - key: VERSION
-        value: 1.0.1
+        value: 1.2.0
       - key: PROCESSING_ENGINE
         value: direct
+      - key: DNS_TIMEOUT_MS
+        value: "4000"
+      - key: DNS_RETRIES
+        value: "2"
+      - key: DNS_RETRY_DELAY_MS
+        value: "250"
+      - key: CONNECT_TIMEOUT_MS
+        value: "10000"
+      - key: TLS_TIMEOUT_MS
+        value: "10000"
+      - key: HEADERS_TIMEOUT_MS
+        value: "20000"
+      - key: IDLE_TIMEOUT_MS
+        value: "60000"
       - key: MAX_CONCURRENT_STREAMS
         value: "100"
       - key: RATE_LIMIT_MAX

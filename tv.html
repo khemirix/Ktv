@@ -216,13 +216,32 @@
 <script src="js/smart-proxy-config.js"></script>
 <script src="js/smart-proxy-client.js"></script>
 <script>
-  var PROXY = 'https://t-ahg3.onrender.com';
   var channels = [];
   var activeCategory = 'All';
   var currentPlayer = null;
   var activeDetectionController = null;
   var playerModal = null;
   var playGeneration = 0;
+
+  // One configuration source: js/smart-proxy-config.js.
+  function proxyBase() {
+    return window.SmartProxyClient
+      ? SmartProxyClient.normalizeBase(window.KTV_SMART_PROXY_URL) : '';
+  }
+
+  function isHttpStream(url) {
+    return /^http:\/\//i.test(String(url || ''));
+  }
+
+  // An HTTPS page must never request a plain HTTP stream directly.
+  function streamRequiresProxy(ch) {
+    return location.protocol === 'https:' && isHttpStream(ch && ch.stream);
+  }
+
+  function showStreamError(err) {
+    setStatus('error');
+    showLoader(true, (err && err.message) || 'Could not connect to this stream.');
+  }
 
   window.addEventListener('DOMContentLoaded', function() {
     playerModal = new bootstrap.Modal(document.getElementById('tvPlayerModal'));
@@ -378,20 +397,97 @@
     });
   }
 
-  function detectDirectly(ch, generation, video, warnings) {
-    StreamDetector.detect(ch.stream, {
-      proxy: PROXY,
-      video: video,
+  function ensureDetectionController() {
+    if (!activeDetectionController && typeof AbortController !== 'undefined') {
+      activeDetectionController = new AbortController();
+    }
+    return activeDetectionController;
+  }
+
+  function playViaSmartProxy(ch, generation, video, warnings) {
+    var base = proxyBase();
+    if (!base) {
+      showStreamError(new Error(streamRequiresProxy(ch)
+        ? 'This HTTP stream cannot be played from the HTTPS page. Smart Proxy is disabled.'
+        : 'Smart Proxy is unavailable.'));
+      return;
+    }
+
+    var controller = ensureDetectionController();
+    showLoader(true, 'Detecting ' + ch.name + ' via Smart Proxy ' +
+      '(waking server if needed)...');
+
+    SmartProxyClient.detect(ch.stream, {
+      baseUrl: base,
       metadata: ch,
-      allowMetadataFallback: true
+      timeoutMs: 30000,
+      retries: 1,
+      signal: controller ? controller.signal : null
     }).then(function (detected) {
       if (generation !== playGeneration) return;
+      activeDetectionController = null;
+      if (!detected || !detected.mediaUrl || !detected.engine ||
+          detected.engine === 'unknown') {
+        throw new Error((detected && detected.message) ||
+          'Smart Proxy returned no playable stream.');
+      }
       detected.warnings = (warnings || []).concat(detected.warnings || []);
       applyDetected(detected, generation, video, ch);
     }).catch(function (err) {
       if (generation !== playGeneration) return;
-      setStatus('error');
-      showLoader(true, (err && err.message) || 'Could not connect to this stream.');
+      activeDetectionController = null;
+      console.warn('[TV] Smart Proxy failed: ' + ((err && err.message) || 'unknown error'));
+      showStreamError(err);
+    });
+  }
+
+  // HTTPS pages try direct playback first. They never fetch an HTTP stream
+  // directly; that case is routed to Smart Proxy before any request is made.
+  function detectDirectly(ch, generation, video, warnings) {
+    if (streamRequiresProxy(ch)) {
+      playViaSmartProxy(ch, generation, video, warnings);
+      return;
+    }
+
+    var controller = ensureDetectionController();
+    StreamDetector.detect(ch.stream, {
+      tryDirect: true,
+      proxy: '',
+      video: video,
+      metadata: ch,
+      allowMetadataFallback: false,
+      timeoutMs: 10000,
+      signal: controller ? controller.signal : null
+    }).then(function (detected) {
+      if (generation !== playGeneration) return;
+      activeDetectionController = null;
+      var playable = detected && detected.engine && detected.engine !== 'unknown' &&
+        detected.mediaUrl && detected.format !== 'unsupported';
+
+      if (!playable) {
+        if (proxyBase()) {
+          var reason = (detected && detected.message) || 'Direct playback was inconclusive.';
+          showLoader(true, reason + ' Trying Smart Proxy...');
+          playViaSmartProxy(ch, generation, video,
+            (warnings || []).concat([reason]));
+          return;
+        }
+        applyDetected(detected, generation, video, ch);
+        return;
+      }
+
+      detected.warnings = (warnings || []).concat(detected.warnings || []);
+      applyDetected(detected, generation, video, ch);
+    }).catch(function (err) {
+      if (generation !== playGeneration) return;
+      activeDetectionController = null;
+      if (proxyBase()) {
+        var reason = (err && err.message) || 'Direct detection failed.';
+        showLoader(true, reason + ' Trying Smart Proxy...');
+        playViaSmartProxy(ch, generation, video, (warnings || []).concat([reason]));
+        return;
+      }
+      showStreamError(err);
     });
   }
 
@@ -399,46 +495,17 @@
     stopStream();
     var generation = playGeneration;
     var video = document.getElementById('tvVideo');
-    var detectionController = typeof AbortController !== 'undefined'
-      ? new AbortController() : null;
-    activeDetectionController = detectionController;
+    ensureDetectionController();
 
     playerModal.show();
     setStatus('loading');
 
-    var smartBase = window.SmartProxyClient
-      ? SmartProxyClient.normalizeBase(window.KTV_SMART_PROXY_URL) : '';
-
-    if (smartBase && SmartProxyClient.isEnabled(smartBase)) {
-      showLoader(true, 'Detecting ' + ch.name + ' via Smart Proxy ' +
-        '(waking server if needed)...');
-      SmartProxyClient.detect(ch.stream, {
-        baseUrl: smartBase,
-        metadata: ch,
-        timeoutMs: 30000,
-        signal: detectionController ? detectionController.signal : null
-      }).then(function (detected) {
-        if (generation !== playGeneration) return;
-        activeDetectionController = null;
-        if (!detected || !detected.mediaUrl || !detected.engine ||
-            detected.engine === 'unknown') {
-          throw new Error((detected && detected.message) ||
-            'Smart Proxy returned no playable stream.');
-        }
-        applyDetected(detected, generation, video, ch);
-      }).catch(function (err) {
-        if (generation !== playGeneration) return;
-        activeDetectionController = null;
-        var reason = (err && err.message) || 'Smart Proxy unavailable.';
-        console.warn('[TV] Smart Proxy unavailable: ' + reason);
-        showLoader(true, 'Smart Proxy unavailable, trying direct detection...');
-        detectDirectly(ch, generation, video,
-          ['Smart Proxy unavailable: ' + reason]);
-      });
+    if (streamRequiresProxy(ch)) {
+      showLoader(true, 'This HTTP stream must use Smart Proxy on an HTTPS page...');
+      playViaSmartProxy(ch, generation, video, []);
       return;
     }
 
-    activeDetectionController = null;
     showLoader(true, 'Detecting ' + ch.name + ' stream format...');
     detectDirectly(ch, generation, video, []);
   }

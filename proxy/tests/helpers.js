@@ -1,6 +1,9 @@
 'use strict';
 
 const http = require('node:http');
+const https = require('node:https');
+const fs = require('node:fs');
+const path = require('node:path');
 const { createApp } = require('../src/app');
 const { loadConfig } = require('../src/config');
 
@@ -42,35 +45,35 @@ function state() {
 function createUpstreamHandler(s) {
   return function (req, res) {
     var parsed = new URL(req.url || '/', 'http://localhost');
-    var path = parsed.pathname;
+    var pathName = parsed.pathname;
     s.requests.push(parsed.pathname + parsed.search);
 
-    if (path === '/stream.ts') {
+    if (pathName === '/stream.ts') {
       res.writeHead(200, { 'Content-Type': 'video/mp2t' });
       res.end(tsBytes());
       return;
     }
-    if (path === '/extensionless') {
+    if (pathName === '/extensionless') {
       res.writeHead(200, { 'Content-Type': 'application/octet-stream' });
       res.end(tsBytes());
       return;
     }
-    if (path === '/movie.mp4') {
+    if (pathName === '/movie.mp4') {
       res.writeHead(200, { 'Content-Type': 'video/mp4' });
       res.end(mp4Bytes());
       return;
     }
-    if (path === '/unsupported') {
+    if (pathName === '/unsupported') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end('<!doctype html><html><body>No stream</body></html>');
       return;
     }
-    if (path === '/error') {
+    if (pathName === '/error') {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('not found');
       return;
     }
-    if (path === '/range') {
+    if (pathName === '/range') {
       var body = Buffer.alloc(100, 0x47);
       var match = /bytes=(\d+)-(\d+)/.exec(req.headers.range || '');
       if (!match) {
@@ -88,14 +91,37 @@ function createUpstreamHandler(s) {
       res.end(body.slice(start, end + 1));
       return;
     }
-    if (path === '/hls/master.m3u8') {
+    if (pathName === '/hls/master.m3u8') {
       res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
       res.end('#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-STREAM-INF:BANDWIDTH=800000\n' +
         'media.m3u8?token=abc\n');
       return;
     }
-    if (path === '/hls/media.m3u8' || path === '/hls/live.m3u8') {
-      var live = path === '/hls/live.m3u8';
+    if (pathName === '/hls/nested.m3u8') {
+      res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+      res.end('#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-STREAM-INF:BANDWIDTH=900000\n' +
+        'variant.m3u8?token=abc\n');
+      return;
+    }
+    if (pathName === '/hls/variant.m3u8') {
+      res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+      res.end([
+        '#EXTM3U',
+        '#EXT-X-VERSION:6',
+        '#EXT-X-TARGETDURATION:4',
+        '#EXT-X-MAP:URI="init.mp4?token=abc"',
+        '#EXT-X-KEY:METHOD=AES-128,URI="key.bin?token=abc"',
+        '#EXTINF:4,',
+        'seg1.m4s?token=abc',
+        '#EXTINF:4,',
+        'seg2.m4s?token=abc',
+        '#EXT-X-ENDLIST',
+        ''
+      ].join('\n'));
+      return;
+    }
+    if (pathName === '/hls/media.m3u8' || pathName === '/hls/live.m3u8') {
+      var live = pathName === '/hls/live.m3u8';
       var playlist = [
         '#EXTM3U',
         '#EXT-X-VERSION:3',
@@ -112,55 +138,82 @@ function createUpstreamHandler(s) {
       res.end(playlist.join('\n') + '\n');
       return;
     }
-    if (path === '/hls/absolute.m3u8') {
+    if (pathName === '/hls/absolute.m3u8') {
       res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
       res.end('#EXTM3U\n#EXTINF:4,\n' +
         'http://127.0.0.1:' + s.port + '/hls/seg1.ts?token=abc\n');
       return;
     }
-    if (path === '/hls/wrong.m3u8') {
+    if (pathName === '/hls/wrong.m3u8') {
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       res.end('#EXTM3U\n#EXTINF:4,\nseg1.ts\n');
       return;
     }
-    if (path === '/hls/incorrect.ts') {
+    if (pathName === '/hls/incorrect.ts') {
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       res.end(tsBytes());
       return;
     }
-    if (path === '/hls/seg1.ts' || path === '/hls/seg2.ts' || path === '/hls/key.bin') {
-      res.writeHead(200, { 'Content-Type': path.indexOf('.ts') !== -1 ? 'video/mp2t' : 'application/octet-stream' });
+    if (pathName === '/hls/seg1.ts' || pathName === '/hls/seg2.ts' ||
+        pathName === '/hls/seg1.m4s' || pathName === '/hls/seg2.m4s' ||
+        pathName === '/hls/key.bin') {
+      res.writeHead(200, {
+        'Content-Type': pathName.indexOf('.m4s') !== -1
+          ? 'video/mp4'
+          : (pathName.indexOf('.ts') !== -1 ? 'video/mp2t' : 'application/octet-stream')
+      });
       res.end(tsBytes(188));
       return;
     }
-    if (path === '/hls/init.mp4') {
+    if (pathName === '/hls/init.mp4') {
       res.writeHead(200, { 'Content-Type': 'video/mp4' });
       res.end(mp4Bytes());
       return;
     }
-    if (path === '/redirect-private') {
+    if (pathName === '/redirect-private') {
       res.writeHead(302, { Location: 'http://127.0.0.1:' + s.port + '/secret' });
       res.end();
       return;
     }
-    if (path === '/redirect-public') {
+    if (pathName === '/redirect-public') {
       res.writeHead(302, { Location: '/stream.ts' });
       res.end();
       return;
     }
-    if (path === '/secret') {
+    if (pathName === '/redirect-https') {
+      if (!s.httpsBase) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('https fixture unavailable');
+        return;
+      }
+      res.writeHead(302, { Location: s.httpsBase + '/stream.ts' });
+      res.end();
+      return;
+    }
+    if (pathName === '/secret') {
       res.writeHead(200, { 'Content-Type': 'video/mp2t' });
       res.end(tsBytes());
       return;
     }
-    if (path === '/slow') {
+    if (pathName === '/slow') {
       res.writeHead(200, { 'Content-Type': 'video/mp2t' });
       res.write(tsBytes(188));
       s.sockets.add(req.socket);
       req.socket.on('close', function () { s.slowClosed = true; });
       return;
     }
-    if (path === '/live') {
+    if (pathName === '/slow-headers') {
+      var delay = Number(parsed.searchParams.get('delay') || 300);
+      s.sockets.add(req.socket);
+      req.socket.on('close', function () { s.slowClosed = true; });
+      setTimeout(function () {
+        if (res.destroyed) return;
+        res.writeHead(200, { 'Content-Type': 'video/mp2t' });
+        res.end(tsBytes());
+      }, delay);
+      return;
+    }
+    if (pathName === '/live') {
       res.writeHead(200, { 'Content-Type': 'video/mp2t' });
       res.write(tsBytes(188));
       var timer = setInterval(function () {
@@ -173,7 +226,7 @@ function createUpstreamHandler(s) {
       });
       return;
     }
-    if (path === '/never') return;
+    if (pathName === '/never') return;
 
     res.writeHead(500, { 'Content-Type': 'text/plain' });
     res.end('unknown test route');
@@ -189,19 +242,37 @@ async function startUpstream() {
   return s;
 }
 
+async function startHttpsUpstream() {
+  var s = state();
+  var fixtureDir = path.join(__dirname, 'fixtures');
+  var credentials = {
+    key: fs.readFileSync(path.join(fixtureDir, 'localhost.key')),
+    cert: fs.readFileSync(path.join(fixtureDir, 'localhost.crt'))
+  };
+  var server = https.createServer(credentials, createUpstreamHandler(s));
+  s.port = await listen(server);
+  s.base = 'https://localhost:' + s.port;
+  s.httpsBase = s.base;
+  s.close = function () { return close(server); };
+  return s;
+}
+
 async function startProxy(options) {
   options = options || {};
   var env = Object.assign({
     PORT: '0',
     RATE_LIMIT_MAX: '1000',
     MAX_CONCURRENT_STREAMS: '20',
+    DNS_TIMEOUT_MS: '500',
+    DNS_RETRIES: '0',
     HEADERS_TIMEOUT_MS: options.headersTimeoutMs || '12000'
   }, options.env || {});
   var cfg = Object.assign(loadConfig(env), options.config || {});
   var app = createApp({
     config: cfg,
     allowPrivate: options.allowPrivate !== false,
-    allowPrivateRedirects: !!options.allowPrivateRedirects
+    allowPrivateRedirects: !!options.allowPrivateRedirects,
+    requestOptions: options.requestOptions || {}
   });
   var port = await listen(app.server);
   return {
@@ -238,6 +309,7 @@ module.exports = {
   tsBytes,
   mp4Bytes,
   startUpstream,
+  startHttpsUpstream,
   startProxy,
   apiUrl,
   json,

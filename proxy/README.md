@@ -103,12 +103,16 @@ no `.env` file is needed.
 |---|---:|---|
 | `PORT` | `10000` | Listen port. Render supplies this automatically. |
 | `HOST` | `0.0.0.0` | Listen address. |
-| `VERSION` | `1.0.1` | Reported by `/health`. |
+| `VERSION` | `1.2.0` | Reported by `/health`. |
 | `SMART_PROXY_PUBLIC_BASE_URL` | derived from request | Public base URL used when rewriting HLS playlist references. Set this on Render. |
 | `MAX_URL_LENGTH` | `4096` | Rejects overly long stream URLs. |
-| `CONNECT_TIMEOUT_MS` | `8000` | Connection/header timeout budget. |
-| `HEADERS_TIMEOUT_MS` | `12000` | Maximum wait for upstream response headers. |
-| `IDLE_TIMEOUT_MS` | `30000` | Upstream inactivity timeout for long streams. |
+| `DNS_TIMEOUT_MS` | `4000` | Timeout for each DNS lookup attempt. |
+| `DNS_RETRIES` | `2` | Extra DNS attempts after a temporary failure. |
+| `DNS_RETRY_DELAY_MS` | `250` | Wait between DNS attempts. |
+| `CONNECT_TIMEOUT_MS` | `10000` | TCP connection timeout. |
+| `TLS_TIMEOUT_MS` | `10000` | HTTPS handshake timeout. |
+| `HEADERS_TIMEOUT_MS` | `20000` | Maximum wait for upstream response headers. |
+| `IDLE_TIMEOUT_MS` | `60000` | Upstream inactivity timeout for long streams. |
 | `DETECT_MAX_BYTES` | `65536` | Max bytes read by detection. Streams are never fully downloaded. |
 | `MAX_PLAYLIST_BYTES` | `1048576` | Safety cap for playlist buffering. |
 | `PEEK_BYTES` | `16384` | Hint kept for compatibility; forwarding releases the first chunk immediately. |
@@ -137,7 +141,7 @@ query strings, headers, and tokens are never echoed.
   "ok": true,
   "status": "ok",
   "service": "khemirix-smart-proxy",
-  "version": "1.0.1",
+  "version": "1.2.0",
   "uptimeSeconds": 42,
   "activeStreams": 0,
   "maxStreams": 100,
@@ -327,24 +331,32 @@ localStorage.setItem('ktvSmartProxyUrl', 'https://another-proxy.example');
 
 Use `?proxy=off` (or store `off`) to disable the proxy temporarily.
 
-When enabled:
+Playback routing:
 
-1. `playChannel()` asks `/api/detect` first with a 30-second timeout so a cold
-   Render instance can wake up.
-2. The returned `playbackUrl` and engine are passed to the existing
-   `LivePlayer`.
-3. Original channel data remains available as `originalUrl`/`metadata`.
-4. Switching channels aborts the previous detection request and destroys the
-   current player before starting a new one.
-5. If Smart Proxy detection fails or times out, a visible diagnostic is shown
-   and the original `StreamDetector` path is used as a backward-compatible
-   fallback.
-6. HLS playlists/segments/keys are rewritten by the proxy; the browser never
-   receives an unrewritten playlist when proxy mode is active.
+1. HTTPS channel URLs are tried directly first. If direct detection fails or
+   finds no playable engine, the Smart Proxy is used.
+2. HTTP channel URLs on the HTTPS GitHub Pages site always use the Smart
+   Proxy. The browser never makes a direct HTTP media request, and the old
+   legacy `/fetch` proxy variable was removed.
+3. If `?proxy=off` is used and the channel is HTTP on an HTTPS page, a clear
+   error is shown instead of a Mixed Content request.
+4. Proxy detection uses `/api/detect` with a 30-second timeout and one retry
+   for temporary DNS/timeout/unreachable errors.
+5. The returned `playbackUrl` and engine are passed to the existing
+   `LivePlayer`. Original channel data remains available as `originalUrl` and
+   `metadata`.
+6. Switching channels aborts the previous detection request on both the client
+   and the backend, then destroys the previous player before starting a new
+   one. Stale responses cannot replace the selected channel.
+7. HLS master/media/nested playlists, segments, keys, and maps are rewritten
+   through `/api/stream`; query tokens and relative URLs are preserved.
+8. Playback errors are mapped to readable messages such as DNS failure,
+   timeout, unreachable host, blocked address, and upstream HTTP error.
 
-To disable the proxy and restore the original behavior, use `?proxy=off` or
-clear `localStorage.ktvSmartProxyUrl` and set `DEFAULT_PROXY_URL` to an empty
-string. No player logic changes are required.
+To restore the old all-direct behavior, use `?proxy=off` or clear
+`localStorage.ktvSmartProxyUrl` and set `DEFAULT_PROXY_URL` to an empty string.
+HTTP channels on the HTTPS site will still be blocked with an explanatory
+message because that was never a valid browser request.
 
 ---
 

@@ -83,13 +83,13 @@ test('frontend client surfaces safe proxy errors', async () => {
     await assert.rejects(
       client.detect('http://example.test/live', { baseUrl: 'https://proxy.example' }),
       err => err.code === 'BLOCKED_ADDRESS' &&
-        err.message === 'The stream host is not allowed.');
+        err.message === 'The proxy blocked this stream address for safety.');
   } finally {
     global.fetch = previousFetch;
   }
 });
 
-test('frontend client passes an external abort signal so channel switches cancel requests', async () => {
+test('frontend client links an external abort signal so channel switches cancel requests', async () => {
   const win = { KTV_SMART_PROXY_URL: '' };
   const client = loadClient(win);
   const previousFetch = global.fetch;
@@ -98,6 +98,42 @@ test('frontend client passes an external abort signal so channel switches cancel
 
   global.fetch = async function (url, init) {
     usedSignal = init.signal;
+    await new Promise(function (resolve) { setTimeout(resolve, 20); });
+    return { ok: true, status: 200, json: async () => ({ ok: true }) };
+  };
+
+  try {
+    const pending = client.detect('http://example.test/live.m3u8', {
+      baseUrl: 'https://proxy.example',
+      signal: controller.signal
+    });
+    controller.abort();
+    await assert.rejects(pending, err => err.code === 'CLIENT_CLOSED');
+    assert.ok(usedSignal && usedSignal.aborted,
+      'the fetch signal must be aborted with the channel controller');
+  } finally {
+    global.fetch = previousFetch;
+  }
+});
+
+test('frontend client retries temporary upstream failures once', async () => {
+  const win = { KTV_SMART_PROXY_URL: '' };
+  const client = loadClient(win);
+  const previousFetch = global.fetch;
+  let calls = 0;
+
+  global.fetch = async function () {
+    calls += 1;
+    if (calls === 1) {
+      return {
+        ok: false,
+        status: 504,
+        json: async () => ({
+          ok: false,
+          error: { code: 'UPSTREAM_TIMEOUT', message: 'The upstream stream did not respond in time.' }
+        })
+      };
+    }
     return {
       ok: true,
       status: 200,
@@ -115,12 +151,14 @@ test('frontend client passes an external abort signal so channel switches cancel
   };
 
   try {
-    await client.detect('http://example.test/live.m3u8', {
+    const result = await client.detect('http://example.test/live.m3u8', {
       baseUrl: 'https://proxy.example',
-      signal: controller.signal
+      retries: 1
     });
-    assert.equal(usedSignal, controller.signal);
+    assert.equal(calls, 2);
+    assert.equal(result.engine, 'hls.js');
   } finally {
     global.fetch = previousFetch;
   }
 });
+

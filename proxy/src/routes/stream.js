@@ -5,6 +5,7 @@ const registry = require('../stream/registry');
 const sniff = require('../detectors/sniff');
 const { streamUrlFrom } = require('../utils/request');
 const { clientRequestHeaders } = require('../utils/headers');
+const { responseAbort } = require('../utils/abort');
 const { sendRouteError } = require('../middleware/response');
 const { proxyError } = require('../utils/errors');
 
@@ -19,6 +20,7 @@ async function streamHandler(ctx) {
   var released = false;
   var unregister = function () {};
   var upstream = null;
+  var abort = responseAbort(ctx.res);
 
   function cleanup() {
     if (!released) {
@@ -26,12 +28,14 @@ async function streamHandler(ctx) {
       ctx.connectionLimit.release();
     }
     unregister();
+    abort.dispose();
   }
 
   try {
     var opened = await openUpstream(rawUrl, Object.assign({}, ctx.requestOptions, {
       method: ctx.req.method || 'GET',
-      headers: clientRequestHeaders(ctx.req)
+      headers: clientRequestHeaders(ctx.req),
+      signal: abort.signal
     }));
     upstream = opened.response;
 
@@ -61,7 +65,9 @@ async function streamHandler(ctx) {
       maxPlaylistBytes: ctx.config.maxPlaylistBytes
     });
     finished = true;
+    abort.complete();
   } catch (err) {
+    abort.complete();
     if (!ctx.res.headersSent) sendRouteError(ctx.res, err);
     else if (upstream) {
       try { upstream.destroy(); } catch (e) {}

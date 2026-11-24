@@ -107,7 +107,8 @@
 
   function proxyUrl(base, url) {
     if (!base) return '';
-    return text(base).replace(/\/+$/, '') + '/fetch?url=' + encodeURIComponent(url);
+    // The Smart Proxy exposes /api/stream, not the legacy /fetch endpoint.
+    return text(base).replace(/\/+$/, '') + '/api/stream?url=' + encodeURIComponent(url);
   }
 
   function readPrefix(response, limit) {
@@ -165,20 +166,37 @@
     if (typeof root.fetch !== 'function') {
       return Promise.reject(new Error('fetch is unavailable'));
     }
+    var external = options.signal || null;
     var controller = (typeof root.AbortController === 'function')
       ? new root.AbortController() : null;
+    var onExternal = null;
     var timer = null;
-    var payload = {
-      credentials: 'omit',
-      cache: 'no-store'
-    };
-    if (controller) payload.signal = controller.signal;
+    var payload = { credentials: 'omit', cache: 'no-store' };
 
-    var timeout = Number(options.timeoutMs) || DEFAULT_TIMEOUT_MS;
     if (controller) {
+      payload.signal = controller.signal;
+      if (external) {
+        onExternal = function () { try { controller.abort(); } catch (e) {} };
+        if (external.aborted) onExternal();
+        else if (external.addEventListener) external.addEventListener('abort', onExternal);
+      }
+      var timeout = Number(options.timeoutMs) || DEFAULT_TIMEOUT_MS;
       timer = root.setTimeout
         ? root.setTimeout(function () { controller.abort(); }, timeout)
         : setTimeout(function () { controller.abort(); }, timeout);
+    } else if (external) {
+      payload.signal = external;
+    }
+
+    function cleanup() {
+      if (timer !== null) {
+        if (root.clearTimeout) root.clearTimeout(timer);
+        else clearTimeout(timer);
+        timer = null;
+      }
+      if (external && onExternal && external.removeEventListener) {
+        external.removeEventListener('abort', onExternal);
+      }
     }
 
     return root.fetch(url, payload).then(function (response) {
@@ -186,27 +204,21 @@
         ? response.headers.get('content-type') : '';
       var status = response.status || 0;
       if (!response.ok) {
-        clearProbeTimer(timer);
+        cleanup();
         return { ok: false, status: status, contentType: contentType,
                  bytes: new Uint8Array(0) };
       }
       return readPrefix(response, options.sniffBytes).then(function (bytes) {
-        clearProbeTimer(timer);
+        cleanup();
         return { ok: true, status: status, contentType: contentType, bytes: bytes };
       }, function (err) {
-        clearProbeTimer(timer);
+        cleanup();
         throw err;
       });
     }, function (err) {
-      clearProbeTimer(timer);
+      cleanup();
       throw err;
     });
-  }
-
-  function clearProbeTimer(timer) {
-    if (timer === null || timer === undefined) return;
-    if (root.clearTimeout) root.clearTimeout(timer);
-    else clearTimeout(timer);
   }
 
   function httpMessage(status, via) {

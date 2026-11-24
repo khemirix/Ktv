@@ -23,14 +23,19 @@ function createApp(overrides) {
   var connectionLimit = createConnectionLimit(cfg.maxConcurrentStreams);
   var engine = selectEngine(cfg.processingEngine);
 
-  var requestOptions = {
+  var requestOptions = Object.assign({
     allowPrivate: !!overrides.allowPrivate,
     allowPrivateRedirects: !!overrides.allowPrivateRedirects,
     maxUrlLength: cfg.maxUrlLength,
+    dnsTimeoutMs: cfg.dnsTimeoutMs,
+    dnsRetries: cfg.dnsRetries,
+    dnsRetryDelayMs: cfg.dnsRetryDelayMs,
+    connectTimeoutMs: cfg.connectTimeoutMs,
+    tlsTimeoutMs: cfg.tlsTimeoutMs,
     headersTimeoutMs: cfg.headersTimeoutMs,
     idleTimeoutMs: cfg.idleTimeoutMs,
     maxRedirects: cfg.maxRedirects
-  };
+  }, overrides.requestOptions || {});
 
   var server = http.createServer(async function (req, res) {
     if (corsMiddleware(req, res)) return;

@@ -165,7 +165,7 @@ async function run() {
       env: { video: videoStub([]), Hls: hlsStub(true), mpegts: mpegtsStub(true) }
     });
     ok(result.via === 'proxy', 'direct failure falls back to proxy');
-    ok(result.mediaUrl.indexOf('proxy.test/fetch?url=') !== -1, 'proxy URL is used for playback');
+    ok(result.mediaUrl.indexOf('proxy.test/api/stream?url=') !== -1, 'proxy URL is used for playback');
     ok(result.warnings.some(w => /rejected access/i.test(w)), 'direct rejection becomes a warning');
     global.fetch = original;
   }
