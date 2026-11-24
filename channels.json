@@ -197,5 +197,12 @@
       "logo":"",
       "stream":"http://77.137.40.221:8000/playlist.m3u8"
 
+    },
+    {
+      "id": 29,
+      "name": "bein test 2026",
+      "category": "test",
+      "logo": "./css/img/bein/be_in_mena_sports_01_hd.png",
+      "stream": "http://diasporaprimetv.ottct.pro:80/habib-haxha321/ET1ARNYXSC/1784937"
     }
 ]
