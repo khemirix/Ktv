@@ -19,7 +19,18 @@ var MediaPlayer = (function () {
   };
 
   function isHls(url) {
-    return /\.m3u8(?:[?#]|$)/i.test(String(url || ''));
+    return /\.m3u8?(?:[?#]|$)/i.test(String(url || ''));
+  }
+
+  // A recognisable extension is a useful hint, never a rejection rule.
+  // Unknown/extensionless URLs go through StreamDetector instead.
+  function hasRecognizedExtension(url) {
+    return /\.(m3u8?|ts|m2ts|mp4|m4v|mov|mkv|webm|mp3|m4a|aac|oga)(?:[?#]|$)/i
+      .test(String(url || '').split(/[?#]/)[0]);
+  }
+
+  function isMpegTsExtension(url) {
+    return /\.(ts|m2ts)(?:[?#]|$)/i.test(String(url || ''));
   }
 
   function supportsNativeHls(video) {
@@ -205,6 +216,13 @@ var MediaPlayer = (function () {
 
     var s = {
       hls: null,
+      mpegts: null,
+      mpegtsProgress: null,
+      detectionFallbacks: [],
+      headers: {},
+      credentials: 'omit',
+      detectionTimeout: undefined,
+      live: false,
       url: '',
       fallbackUrl: '',
       token: 0,
@@ -384,6 +402,16 @@ var MediaPlayer = (function () {
       s.hls = null;
     }
 
+    function teardownMpegTs() {
+      if (s.mpegtsProgress) {
+        try { video.removeEventListener('progress', s.mpegtsProgress); } catch (e) {}
+        s.mpegtsProgress = null;
+      }
+      if (!s.mpegts) return;
+      try { s.mpegts.destroy(); } catch (e) {}
+      s.mpegts = null;
+    }
+
     function clearVideo() {
       try { video.pause(); } catch (e) {}
       video.removeAttribute('src');
@@ -416,6 +444,7 @@ var MediaPlayer = (function () {
       s.fallbackUsed = true;
       var fallback = s.fallbackUrl;
       teardownHls();
+      teardownMpegTs();
       if (fallback && fallback !== s.url) {
         onError(reason + ' — trying the direct video.');
         s.url = fallback;
@@ -429,7 +458,7 @@ var MediaPlayer = (function () {
       if (token !== s.token) return;
       var detail = (data && (data.details || data.type)) || 'HLS error';
       if (!data || !data.fatal) {
-        console.warn('[HLS] ' + detail);
+        console.warn('[HLS] recoverable playback error');
         return;
       }
 
@@ -464,13 +493,15 @@ var MediaPlayer = (function () {
 
       s.kind = 'hls.js';
       onStatus('hls.js');
-      s.hls = new window.Hls({
+      var hlsConfig = {
         enableWorker: true,
         lowLatencyMode: false,
         backBufferLength: 30,
         maxBufferLength: 30,
         maxMaxBufferLength: 60
-      });
+      };
+      if (s.headers && Object.keys(s.headers).length) hlsConfig.httpHeaders = s.headers;
+      s.hls = new window.Hls(hlsConfig);
 
       s.initTimer = setTimeout(function () {
         if (token !== s.token) return;
@@ -500,6 +531,51 @@ var MediaPlayer = (function () {
       s.hls.attachMedia(video);
     }
 
+    function loadMpegTs(url, token) {
+      if (token !== s.token) return;
+      if (!window.mpegts || !window.mpegts.createPlayer || !window.mpegts.isSupported()) {
+        useFallback(token, 'MPEG-TS playback is unavailable in this browser');
+        return;
+      }
+
+      s.kind = 'mpegts';
+      onStatus('mpegts');
+      var config = { type: 'mpegts', url: url, isLive: !!s.live };
+      if (s.headers && Object.keys(s.headers).length) config.headers = s.headers;
+      s.mpegts = window.mpegts.createPlayer(config, {
+        enableWorker: true,
+        lazyLoad: false,
+        autoCleanupSourceBuffer: true,
+        stashInitialSize: 1024 * 1024
+      });
+      s.mpegts.attachMediaElement(video);
+      s.mpegts.load();
+
+      s.initTimer = setTimeout(function () {
+        if (token !== s.token) return;
+        useFallback(token, 'MPEG-TS stream did not start in time');
+      }, HLS_INIT_TIMEOUT_MS);
+
+      s.mpegtsProgress = function () {
+        if (token !== s.token || !video.buffered || !video.buffered.length) return;
+        var ready = video.buffered.end(video.buffered.length - 1) - (video.currentTime || 0);
+        if (ready < 2) return;
+        if (s.initTimer) { clearTimeout(s.initTimer); s.initTimer = null; }
+        safePlay();
+      };
+      video.addEventListener('progress', s.mpegtsProgress);
+
+      s.mpegts.on(window.mpegts.Events.ERROR, function (type, detail) {
+        if (token !== s.token) return;
+        if (s.retries < MAX_RECOVERY) {
+          s.retries += 1;
+          onError('Stream glitch — retrying…');
+          try { s.mpegts.load(); return; } catch (e) {}
+        }
+        useFallback(token, 'Unable to play this MPEG-TS stream');
+      });
+    }
+
     function loadNativeHls(url) {
       s.kind = 'native-hls';
       onStatus('native-hls');
@@ -519,6 +595,24 @@ var MediaPlayer = (function () {
       safePlay();
     }
 
+    function tryDetectionFallback(token, reason) {
+      if (token !== s.token || !s.detectionFallbacks.length) return false;
+      var next = s.detectionFallbacks.shift();
+      if (!next || !next.url) return false;
+      onError(reason + ' — trying another compatible format.');
+      s.url = next.url;
+      s.retries = 0;
+      if (next.kind === 'hls') {
+        if (supportsNativeHls(video)) loadNativeHls(next.url);
+        else loadHlsJs(next.url, token);
+      } else if (next.kind === 'mpegts') {
+        loadMpegTs(next.url, token);
+      } else {
+        loadDirect(next.url, token);
+      }
+      return true;
+    }
+
     function onVideoError() {
       if (!s.url) return;
       var code = video.error && video.error.code;
@@ -532,6 +626,8 @@ var MediaPlayer = (function () {
         return;
       }
 
+      if (s.kind === 'direct' && tryDetectionFallback(s.token, message)) return;
+
       onError(message + ' The link may have expired — reopen this title for a fresh stream.', true);
     }
 
@@ -539,11 +635,58 @@ var MediaPlayer = (function () {
     video.addEventListener('playing', onPlaying);
     video.addEventListener('loadedmetadata', onLoadedMetadata);
 
+    function routeDetected(result, token, originalUrl) {
+      if (token !== s.token || !result) return;
+      var target = result.finalUrl || originalUrl;
+      var kind = result.kind || 'unknown';
+      if (!target) target = originalUrl;
+      if (result.headers && Object.keys(result.headers).length &&
+          !(s.headers && Object.keys(s.headers).length)) {
+        s.headers = result.headers;
+      }
+
+      if (kind === 'hls') {
+        if (supportsNativeHls(video)) loadNativeHls(target);
+        else loadHlsJs(target, token);
+      } else if (kind === 'mpegts') {
+        loadMpegTs(target, token);
+      } else if (kind === 'progressive' || kind === 'audio') {
+        loadDirect(target, token);
+      } else {
+        // Unknown, but reachable: use the standard video element first, then
+        // try HLS and raw TS only if the browser rejects the direct source.
+        s.detectionFallbacks = [
+          { kind: 'hls', url: target },
+          { kind: 'mpegts', url: target }
+        ];
+        loadDirect(target, token);
+      }
+    }
+
+    function detectThenLoad(url, token) {
+      if (!window.StreamDetector || !StreamDetector.detect) {
+        loadDirect(url, token);
+        return;
+      }
+      onStatus('detecting');
+      StreamDetector.detect(url, {
+        headers: s.headers,
+        credentials: s.credentials,
+        timeout: s.detectionTimeout
+      }).then(function (result) {
+        routeDetected(result, token, url);
+      }).catch(function () {
+        if (token !== s.token) return;
+        loadDirect(url, token);
+      });
+    }
+
     function load(url, options) {
       options = options || {};
 
       var previousUrl = s.url;
-      var canResume = !!previousUrl && !isHls(previousUrl) && !isHls(url) &&
+      var previousKind = s.kind;
+      var canResume = !!previousUrl && previousKind === 'direct' && !isHls(url) &&
         isFinite(video.currentTime) && video.currentTime > 0;
 
       s.token += 1;
@@ -552,9 +695,15 @@ var MediaPlayer = (function () {
       s.fallbackUsed = false;
       s.playingNotified = false;
       s.resumeTime = canResume ? video.currentTime : null;
+      s.detectionFallbacks = [];
+      s.headers = options.headers || {};
+      s.credentials = options.credentials || 'omit';
+      s.detectionTimeout = options.timeout;
+      s.live = !!options.live;
       resetAudioState();
 
       teardownHls();
+      teardownMpegTs();
       clearVideo();
 
       s.url = url;
@@ -566,11 +715,20 @@ var MediaPlayer = (function () {
         return;
       }
 
-      if (isHls(url)) {
+      var forced = (window.StreamDetector && StreamDetector.fromMetadata)
+        ? StreamDetector.fromMetadata(url, options)
+        : null;
+      if (forced) {
+        routeDetected(forced, s.token, url);
+      } else if (isHls(url)) {
         if (supportsNativeHls(video)) loadNativeHls(url);
         else loadHlsJs(url, s.token);
-      } else {
+      } else if (isMpegTsExtension(url)) {
+        loadMpegTs(url, s.token);
+      } else if (hasRecognizedExtension(url)) {
         loadDirect(url, s.token);
+      } else {
+        detectThenLoad(url, s.token);
       }
     }
 
@@ -578,6 +736,7 @@ var MediaPlayer = (function () {
       s.token += 1;
       s.url = '';
       teardownHls();
+      teardownMpegTs();
       video.removeEventListener('error', onVideoError);
       video.removeEventListener('playing', onPlaying);
       video.removeEventListener('loadedmetadata', onLoadedMetadata);
@@ -605,6 +764,8 @@ var MediaPlayer = (function () {
   return {
     create: create,
     isHls: isHls,
+    hasRecognizedExtension: hasRecognizedExtension,
+    isMpegTsExtension: isMpegTsExtension,
     networkTier: networkTier,
     estimateNetworkTier: estimateNetworkTier,
     qualityRank: qualityRank,
