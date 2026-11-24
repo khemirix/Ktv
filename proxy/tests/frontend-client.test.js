@@ -88,3 +88,39 @@ test('frontend client surfaces safe proxy errors', async () => {
     global.fetch = previousFetch;
   }
 });
+
+test('frontend client passes an external abort signal so channel switches cancel requests', async () => {
+  const win = { KTV_SMART_PROXY_URL: '' };
+  const client = loadClient(win);
+  const previousFetch = global.fetch;
+  const controller = new AbortController();
+  let usedSignal = null;
+
+  global.fetch = async function (url, init) {
+    usedSignal = init.signal;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        format: 'hls',
+        engine: 'hls.js',
+        playbackUrl: 'https://proxy.example/api/stream?url=abc',
+        confidence: 'high',
+        reason: 'content signature',
+        proxyStreamingSupported: true,
+        diagnostics: []
+      })
+    };
+  };
+
+  try {
+    await client.detect('http://example.test/live.m3u8', {
+      baseUrl: 'https://proxy.example',
+      signal: controller.signal
+    });
+    assert.equal(usedSignal, controller.signal);
+  } finally {
+    global.fetch = previousFetch;
+  }
+});

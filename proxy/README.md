@@ -103,7 +103,7 @@ no `.env` file is needed.
 |---|---:|---|
 | `PORT` | `10000` | Listen port. Render supplies this automatically. |
 | `HOST` | `0.0.0.0` | Listen address. |
-| `VERSION` | `1.0.0` | Reported by `/health`. |
+| `VERSION` | `1.0.1` | Reported by `/health`. |
 | `SMART_PROXY_PUBLIC_BASE_URL` | derived from request | Public base URL used when rewriting HLS playlist references. Set this on Render. |
 | `MAX_URL_LENGTH` | `4096` | Rejects overly long stream URLs. |
 | `CONNECT_TIMEOUT_MS` | `8000` | Connection/header timeout budget. |
@@ -137,7 +137,7 @@ query strings, headers, and tokens are never echoed.
   "ok": true,
   "status": "ok",
   "service": "khemirix-smart-proxy",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "uptimeSeconds": 42,
   "activeStreams": 0,
   "maxStreams": 100,
@@ -309,34 +309,42 @@ Website and proxy are deployed independently.
 
 ## 11. Live TV integration
 
-`tv.html` includes `js/smart-proxy-client.js`. Proxy use is disabled by default.
-Set a base URL in any of these ways:
+`tv.html` includes two small Live-TV-only files:
 
-```html
-<script>window.KTV_SMART_PROXY_URL = 'https://your-proxy.onrender.com';</script>
-```
+- `js/smart-proxy-config.js` — the single source of truth for the proxy URL.
+- `js/smart-proxy-client.js` — the API client; it contains no proxy URL.
+
+Change `DEFAULT_PROXY_URL` in `js/smart-proxy-config.js` when the backend moves.
+Runtime overrides without editing code:
 
 ```text
-https://khemirix.github.io/Ktv/tv.html?proxy=https://your-proxy.onrender.com
+https://khemirix.github.io/Ktv/tv.html?proxy=https://another-proxy.example
 ```
 
 ```js
-localStorage.setItem('ktvSmartProxyUrl', 'https://your-proxy.onrender.com');
+localStorage.setItem('ktvSmartProxyUrl', 'https://another-proxy.example');
 ```
+
+Use `?proxy=off` (or store `off`) to disable the proxy temporarily.
 
 When enabled:
 
-1. `playChannel()` asks `/api/detect` first.
+1. `playChannel()` asks `/api/detect` first with a 30-second timeout so a cold
+   Render instance can wake up.
 2. The returned `playbackUrl` and engine are passed to the existing
    `LivePlayer`.
 3. Original channel data remains available as `originalUrl`/`metadata`.
-4. If Smart Proxy detection fails, a visible diagnostic is shown and the
-   original `StreamDetector` path is used as a backward-compatible fallback.
-5. No engine switch happens after playback starts; `stopStream()` still
-   destroys the current engine before a new one is created.
+4. Switching channels aborts the previous detection request and destroys the
+   current player before starting a new one.
+5. If Smart Proxy detection fails or times out, a visible diagnostic is shown
+   and the original `StreamDetector` path is used as a backward-compatible
+   fallback.
+6. HLS playlists/segments/keys are rewritten by the proxy; the browser never
+   receives an unrewritten playlist when proxy mode is active.
 
-To disable the proxy and restore the original behavior, empty all three
-configuration locations. No code changes are required.
+To disable the proxy and restore the original behavior, use `?proxy=off` or
+clear `localStorage.ktvSmartProxyUrl` and set `DEFAULT_PROXY_URL` to an empty
+string. No player logic changes are required.
 
 ---
 

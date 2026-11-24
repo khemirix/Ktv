@@ -17,6 +17,19 @@ function redirectMethod(status, method) {
   return method || 'GET';
 }
 
+// Node may call a custom lookup with { all: true }. In that case the callback
+// must receive an array, otherwise the request fails with ERR_INVALID_IP_ADDRESS.
+function pinnedLookup(target) {
+  return function (hostname, dnsOptions, callback) {
+    var entry = { address: target.address, family: target.family };
+    if (dnsOptions && dnsOptions.all) {
+      callback(null, [entry]);
+    } else {
+      callback(null, target.address, target.family);
+    }
+  };
+}
+
 async function openUpstream(rawUrl, options) {
   options = options || {};
   var redirects = options.redirects || 0;
@@ -43,13 +56,11 @@ async function openUpstream(rawUrl, options) {
       method: method,
       headers: options.headers || {},
       agent: false,
-      lookup: function (hostname, dnsOptions, callback) {
-        if (validated.safe) {
-          callback(null, validated.address, validated.family);
-        } else {
-          dnsCallback.lookup(hostname, dnsOptions, callback);
-        }
-      }
+      lookup: validated.safe
+        ? pinnedLookup(validated)
+        : function (hostname, dnsOptions, callback) {
+            dnsCallback.lookup(hostname, dnsOptions, callback);
+          }
     };
 
     var request = transport.request(target, requestOptions, function (response) {
@@ -119,4 +130,4 @@ async function openUpstream(rawUrl, options) {
   });
 }
 
-module.exports = { openUpstream };
+module.exports = { openUpstream, pinnedLookup };

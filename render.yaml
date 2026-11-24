@@ -11,7 +11,7 @@ services:
       - key: SMART_PROXY_PUBLIC_BASE_URL
         sync: false
       - key: VERSION
-        value: 1.0.0
+        value: 1.0.1
       - key: PROCESSING_ENGINE
         value: direct
       - key: MAX_CONCURRENT_STREAMS

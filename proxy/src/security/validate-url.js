@@ -29,7 +29,10 @@ async function resolveSafeAddress(hostname, options) {
   if (!safe.length) {
     throw proxyError(403, 'BLOCKED_ADDRESS', 'The stream host is not allowed.');
   }
-  return { address: safe[0].address, family: safe[0].family };
+  // Prefer IPv4 for compatibility with hosts that have no IPv6 route.
+  var ipv4 = safe.filter(function (record) { return record.family === 4; });
+  var chosen = ipv4[0] || safe[0];
+  return { address: chosen.address, family: chosen.family };
 }
 
 async function validateUrl(raw, options) {
