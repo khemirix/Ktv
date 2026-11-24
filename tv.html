@@ -213,7 +213,21 @@
 <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js"></script>
 <script src="js/stream-detector.js"></script>
 <script src="js/live-player.js"></script>
+<script src="js/smart-proxy-client.js"></script>
 <script>
+  // Smart Proxy is disabled by default. Set one of these to activate it:
+  //   1) window.KTV_SMART_PROXY_URL below (e.g. https://your-proxy.onrender.com)
+  //   2) ?proxy=https://your-proxy.onrender.com in the address bar
+  //   3) localStorage.setItem('ktvSmartProxyUrl', 'https://your-proxy.onrender.com')
+  // Leaving all three empty restores the original direct/proxy detector flow.
+  window.KTV_SMART_PROXY_URL = window.KTV_SMART_PROXY_URL || '';
+  (function () {
+    var fromQuery = new URLSearchParams(location.search).get('proxy');
+    var fromStorage = '';
+    try { fromStorage = localStorage.getItem('ktvSmartProxyUrl') || ''; } catch (e) {}
+    window.KTV_SMART_PROXY_URL = fromQuery || fromStorage || window.KTV_SMART_PROXY_URL;
+  })();
+
   var PROXY = 'https://t-ahg3.onrender.com';
   var channels = [];
   var activeCategory = 'All';
@@ -322,15 +336,56 @@
     video.src = '';
   }
 
-  function playChannel(ch) {
-    stopStream();
-    var generation = playGeneration;
-    var video = document.getElementById('tvVideo');
+  function applyDetected(detected, generation, video, ch) {
+    if (generation !== playGeneration) return;
 
-    playerModal.show();
-    setStatus('loading');
-    showLoader(true, 'Detecting ' + ch.name + ' stream format...');
+    (detected.warnings || []).forEach(function (warning) {
+      console.warn('[TV] ' + warning);
+    });
 
+    if (!detected.engine || detected.engine === 'unknown' || !detected.mediaUrl) {
+      setStatus('error');
+      showLoader(true, detected.message || 'This stream format is not supported.');
+      return;
+    }
+
+    showLoader(true, 'Starting ' + detected.format.toUpperCase() +
+      ' via ' + detected.via + '...');
+
+    currentPlayer = LivePlayer.play({
+      video: video,
+      engine: detected.engine,
+      format: detected.format,
+      url: detected.mediaUrl,
+      message: detected.message,
+      originalUrl: detected.originalUrl || ch.stream,
+      metadata: ch,
+      handlers: {
+        onStatus: function (message) {
+          if (generation === playGeneration) showLoader(true, message);
+        },
+        onBuffering: function (message) {
+          if (generation === playGeneration) showLoader(true, message);
+        },
+        onPlaying: function () {
+          if (generation !== playGeneration) return;
+          setStatus('playing');
+          showLoader(false);
+        },
+        onError: function (message) {
+          if (generation !== playGeneration) return;
+          setStatus('error');
+          showLoader(true, message);
+        },
+        onAutoplayBlocked: function () {
+          if (generation !== playGeneration) return;
+          showLoader(true, 'Autoplay was blocked. Press play to start the stream.');
+        }
+      }
+    });
+  }
+
+  function detectDirectly(ch, generation, video, warnings) {
     StreamDetector.detect(ch.stream, {
       proxy: PROXY,
       video: video,
@@ -338,54 +393,53 @@
       allowMetadataFallback: true
     }).then(function (detected) {
       if (generation !== playGeneration) return;
-
-      (detected.warnings || []).forEach(function (warning) {
-        console.warn('[TV] ' + warning);
-      });
-
-      if (!detected.engine) {
-        setStatus('error');
-        showLoader(true, detected.message || 'This stream format is not supported.');
-        return;
-      }
-
-      showLoader(true, 'Starting ' + detected.format.toUpperCase() +
-        ' via ' + detected.via + '...');
-
-      currentPlayer = LivePlayer.play({
-        video: video,
-        engine: detected.engine,
-        format: detected.format,
-        url: detected.mediaUrl,
-        message: detected.message,
-        handlers: {
-          onStatus: function (message) {
-            if (generation === playGeneration) showLoader(true, message);
-          },
-          onBuffering: function (message) {
-            if (generation === playGeneration) showLoader(true, message);
-          },
-          onPlaying: function () {
-            if (generation !== playGeneration) return;
-            setStatus('playing');
-            showLoader(false);
-          },
-          onError: function (message) {
-            if (generation !== playGeneration) return;
-            setStatus('error');
-            showLoader(true, message);
-          },
-          onAutoplayBlocked: function () {
-            if (generation !== playGeneration) return;
-            showLoader(true, 'Autoplay was blocked. Press play to start the stream.');
-          }
-        }
-      });
+      detected.warnings = (warnings || []).concat(detected.warnings || []);
+      applyDetected(detected, generation, video, ch);
     }).catch(function (err) {
       if (generation !== playGeneration) return;
       setStatus('error');
       showLoader(true, (err && err.message) || 'Could not connect to this stream.');
     });
+  }
+
+  function playChannel(ch) {
+    stopStream();
+    var generation = playGeneration;
+    var video = document.getElementById('tvVideo');
+
+    playerModal.show();
+    setStatus('loading');
+
+    var smartBase = window.SmartProxyClient
+      ? SmartProxyClient.normalizeBase(window.KTV_SMART_PROXY_URL) : '';
+
+    if (smartBase && SmartProxyClient.isEnabled(smartBase)) {
+      showLoader(true, 'Detecting ' + ch.name + ' via Smart Proxy...');
+      SmartProxyClient.detect(ch.stream, {
+        baseUrl: smartBase,
+        metadata: ch,
+        timeoutMs: 12000
+      }).then(function (detected) {
+        if (generation !== playGeneration) return;
+        if (!detected || !detected.mediaUrl || !detected.engine ||
+            detected.engine === 'unknown') {
+          throw new Error((detected && detected.message) ||
+            'Smart Proxy returned no playable stream.');
+        }
+        applyDetected(detected, generation, video, ch);
+      }).catch(function (err) {
+        if (generation !== playGeneration) return;
+        var reason = (err && err.message) || 'Smart Proxy unavailable.';
+        console.warn('[TV] Smart Proxy unavailable: ' + reason);
+        showLoader(true, 'Smart Proxy unavailable, trying direct detection...');
+        detectDirectly(ch, generation, video,
+          ['Smart Proxy unavailable: ' + reason]);
+      });
+      return;
+    }
+
+    showLoader(true, 'Detecting ' + ch.name + ' stream format...');
+    detectDirectly(ch, generation, video, []);
   }
 </script>
 </body>
