@@ -146,6 +146,26 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   .loader-text { font-size: 0.75rem; color: rgba(255,255,255,0.4); }
   .no-channels { color: rgba(255,255,255,0.3); text-align: center; padding: 60px 0; font-size: 0.9rem; }
+  .playlist-loader {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    margin-top: 14px;
+  }
+  .playlist-loader input[type="text"], .playlist-loader input[type="file"] {
+    font-size: 0.75rem; max-width: 280px;
+  }
+  .playlist-loader .btn-sm { font-size: 0.75rem; font-weight: 600; }
+  .playlist-status { font-size: 0.7rem; color: rgba(255,255,255,0.45); flex-basis: 100%; }
+  .playlist-status.error { color: #ff6b6b; }
+  .live-track-bar {
+    display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 16px;
+    background: #0a0a0a; border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  .live-track-bar label { font-size: 0.65rem; color: rgba(255,255,255,0.45); text-transform: uppercase; letter-spacing: 0.08em; }
+  .live-track-bar select {
+    background: #141414; color: #fff; border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 4px; font-size: 0.75rem; padding: 4px 8px; max-width: 220px;
+  }
+  .live-track-bar[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -175,6 +195,13 @@
     <h1 style="font-size:2.2rem;font-weight:800;color:#fff;margin-bottom:8px;">Live <span style="color:#e50914;">TV</span> Channels</h1>
     <p style="color:rgba(255,255,255,0.45);font-size:0.95rem;max-width:480px;">Stream live channels directly in your browser. Click any channel to start watching.</p>
     <div class="category-filters" id="categoryFilters"></div>
+    <div class="playlist-loader">
+      <input type="text" id="playlistUrl" class="form-control form-control-sm" placeholder="M3U playlist URL (optional)" aria-label="M3U playlist URL">
+      <button type="button" class="btn btn-sm btn-outline-light" id="loadPlaylistUrl">Load URL</button>
+      <input type="file" id="playlistFile" class="form-control form-control-sm" accept=".m3u,.m3u8,text/plain" aria-label="Local M3U playlist">
+      <button type="button" class="btn btn-sm btn-outline-light" id="loadPlaylistFile">Load File</button>
+      <span class="playlist-status" id="playlistStatus">Playlists are parsed in a background worker; the built-in channel list stays available.</span>
+    </div>
   </div>
 </div>
 
@@ -203,6 +230,16 @@
           <div class="loader-text" id="loaderText">Connecting to stream...</div>
         </div>
       </div>
+      <div class="live-track-bar" id="trackBar" hidden>
+        <div id="audioTrackWrap" hidden>
+          <label for="audioTrackSelect">Audio</label>
+          <select id="audioTrackSelect"></select>
+        </div>
+        <div id="subtitleTrackWrap" hidden>
+          <label for="subtitleTrackSelect">Subtitles</label>
+          <select id="subtitleTrackSelect"></select>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -211,206 +248,9 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.7/dist/hls.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js"></script>
-<script>
-  var PROXY = 'https://t-ahg3.onrender.com';
-  var channels = [];
-  var activeCategory = 'All';
-  var currentPlayer = null;
-  var playerModal = null;
-
-  window.addEventListener('DOMContentLoaded', function() {
-    playerModal = new bootstrap.Modal(document.getElementById('tvPlayerModal'));
-
-    document.getElementById('tvPlayerModal').addEventListener('hidden.bs.modal', function() {
-      stopStream();
-    });
-
-    fetch('channels.json')
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        channels = data;
-        buildCategories();
-        renderChannels(channels);
-      })
-      .catch(function() {
-        document.getElementById('channelsGrid').innerHTML =
-          '<div class="no-channels col-12">Could not load channels.json</div>';
-      });
-
-    document.getElementById('searchInput').addEventListener('input', function() {
-      var q = this.value.toLowerCase().trim();
-      var base = activeCategory === 'All' ? channels : channels.filter(function(c) { return c.category === activeCategory; });
-      var filtered = q ? base.filter(function(c) { return c.name.toLowerCase().indexOf(q) !== -1; }) : base;
-      renderChannels(filtered);
-    });
-  });
-
-  function buildCategories() {
-    var cats = ['All'];
-    channels.forEach(function(c) { if (cats.indexOf(c.category) === -1) cats.push(c.category); });
-    var html = '';
-    cats.forEach(function(cat) {
-      html += '<button class="cat-btn' + (cat === 'All' ? ' active' : '') + '" onclick="filterBy(\'' + cat + '\', this)">' + cat + '</button>';
-    });
-    document.getElementById('categoryFilters').innerHTML = html;
-  }
-
-  function filterBy(cat, btn) {
-    activeCategory = cat;
-    document.querySelectorAll('.cat-btn').forEach(function(b) { b.classList.remove('active'); });
-    btn.classList.add('active');
-    var filtered = cat === 'All' ? channels : channels.filter(function(c) { return c.category === cat; });
-    renderChannels(filtered);
-  }
-
-  function renderChannels(list) {
-    var grid = document.getElementById('channelsGrid');
-    if (!list.length) {
-      grid.innerHTML = '<div class="no-channels col-12">No channels found.</div>';
-      return;
-    }
-    grid.innerHTML = list.map(function(ch) {
-      var data = encodeURIComponent(JSON.stringify(ch));
-      return '<div class="col-6 col-sm-4 col-md-3 col-lg-2">' +
-        '<div class="channel-card" onclick="openChannel(decodeURIComponent(\'' + data + '\'))">' +
-          '<div class="channel-poster">' +
-            '<img src="' + ch.logo + '" alt="' + ch.name + '" onerror="this.src=\'https://placehold.co/320x180/111/444?text=TV\'">' +
-            '<div class="card-play-overlay"><i class="fas fa-play"></i></div>' +
-            '<span class="card-live-tag">LIVE</span>' +
-          '</div>' +
-          '<div class="channel-info">' +
-            '<div class="channel-name">' + ch.name + '</div>' +
-            '<div class="channel-cat">' + ch.category + '</div>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
-    }).join('');
-  }
-
-  function openChannel(dataStr) {
-    var ch = JSON.parse(dataStr);
-    document.getElementById('modalLogo').src = ch.logo;
-    document.getElementById('modalName').textContent = ch.name;
-    setStatus('loading');
-    showLoader(true, 'Connecting to ' + ch.name + '...');
-    playerModal.show();
-    playStream(ch.stream);
-  }
-
-  function setStatus(state) {
-    var el = document.getElementById('playerStatus');
-    el.className = 'player-status ' + state + ' ms-2';
-    var labels = { loading: 'LOADING', playing: 'LIVE', error: 'ERROR' };
-    el.textContent = labels[state] || state.toUpperCase();
-  }
-
-  function showLoader(show, msg) {
-    var el = document.getElementById('videoLoader');
-    if (!show) { el.classList.add('hidden'); return; }
-    el.classList.remove('hidden');
-    if (msg) document.getElementById('loaderText').textContent = msg;
-  }
-
-  function stopStream() {
-    if (currentPlayer) {
-      try { currentPlayer.destroy(); } catch(e) {}
-      currentPlayer = null;
-    }
-    var video = document.getElementById('tvVideo');
-    video.pause();
-    video.src = '';
-  }
-
-  function playStream(streamUrl) {
-    var proxyUrl = PROXY + '/fetch?url=' + encodeURIComponent(streamUrl);
-    var video = document.getElementById('tvVideo');
-
-    stopStream();
-
-    video.onplaying = function() { setStatus('playing'); showLoader(false); };
-    video.onwaiting = function() { showLoader(true, 'Buffering...'); };
-    video.onerror = function() { setStatus('error'); showLoader(true, 'Stream error. Try another channel.'); };
-
-    var isTS = streamUrl.indexOf('.ts') !== -1;
-    var isM3U8 = streamUrl.indexOf('.m3u8') !== -1;
-
-    if (isTS && mpegts.isSupported()) {
-      // Raw MPEG-TS stream — use mpegts.js with pre-buffer
-      currentPlayer = mpegts.createPlayer({
-        type: 'mpegts',
-        isLive: true,
-        url: proxyUrl
-      }, {
-        enableWorker: true,
-        lazyLoad: false,
-        autoCleanupSourceBuffer: true,
-        liveBufferLatencyChasing: false,
-        liveSync: false,
-        liveSyncMaxLatency: 60,
-        liveSyncTargetLatency: 30,
-        stashInitialSize: 1024 * 1024
-      });
-      currentPlayer.attachMediaElement(video);
-      currentPlayer.load();
-
-      var prebuffered = false;
-      video.addEventListener('progress', function checkBuffer() {
-        if (prebuffered) return;
-        if (video.buffered.length > 0) {
-          var bufferedEnd = video.buffered.end(video.buffered.length - 1);
-          var bufferedAmount = bufferedEnd - video.currentTime;
-          showLoader(true, 'Buffering... ' + Math.min(30, Math.floor(bufferedAmount)) + 's / 30s');
-          if (bufferedAmount >= 30) {
-            prebuffered = true;
-            video.play().catch(function() {});
-            video.removeEventListener('progress', checkBuffer);
-          }
-        }
-      });
-
-    } else if (isM3U8 && Hls.isSupported()) {
-      // HLS stream — use hls.js
-      currentPlayer = new Hls({ enableWorker: true, lowLatencyMode: true });
-      currentPlayer.loadSource(proxyUrl);
-      currentPlayer.attachMedia(video);
-      currentPlayer.on(Hls.Events.MANIFEST_PARSED, function() {
-        video.play().catch(function() {});
-      });
-      currentPlayer.on(Hls.Events.ERROR, function(e, data) {
-        if (data.fatal) {
-          setStatus('error');
-          showLoader(true, 'Stream error.');
-        }
-      });
-
-    } else {
-      // Unknown or no extension — try mpegts.js first, fallback to hls.js
-      if (mpegts.isSupported()) {
-        currentPlayer = mpegts.createPlayer({
-          type: 'mpegts',
-          isLive: true,
-          url: proxyUrl
-        }, {
-          enableWorker: true,
-          liveBufferLatencyChasing: true,
-          liveSync: true
-        });
-        currentPlayer.attachMediaElement(video);
-        currentPlayer.load();
-        currentPlayer.play().catch(function() {});
-      } else if (Hls.isSupported()) {
-        currentPlayer = new Hls({ enableWorker: true, lowLatencyMode: true });
-        currentPlayer.loadSource(proxyUrl);
-        currentPlayer.attachMedia(video);
-        currentPlayer.on(Hls.Events.MANIFEST_PARSED, function() {
-          video.play().catch(function() {});
-        });
-      } else {
-        video.src = proxyUrl;
-        video.play().catch(function() {});
-      }
-    }
-  }
-</script>
+<script src="js/stream-detector.js"></script>
+<script src="js/m3u-parser.js"></script>
+<script src="js/live-player.js"></script>
+<script src="js/tv-app.js"></script>
 </body>
 </html>
