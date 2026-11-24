@@ -1,0 +1,28 @@
+#EXTM3U
+#EXTINF:-1 tvg-id="hls.ext" tvg-name="HLS with extension" tvg-logo="https://placehold.co/320x180/111/444?text=HLS" group-title="Formats",HLS with extension
+https://test-streams.example/live/stream.m3u8
+#EXTINF:-1 tvg-id="hls.noext" tvg-name="HLS without extension" group-title="Formats",HLS without extension
+#KODIPROP:mimetype=application/vnd.apple.mpegurl
+http://example.com:80/account/12345/3634
+#EXTINF:-1 tvg-id="ts.noext" tvg-name="MPEG-TS without extension" group-title="Formats",MPEG-TS without extension
+#KODIPROP:mimetype=video/mp2t
+#EXTVLCOPT:http-user-agent=KhemirixTV-Test/1.0
+http://example.com:80/account/12345/3632
+#EXTINF:-1 tvg-id="mp4" tvg-name="Progressive MP4" group-title="Formats",Progressive MP4
+https://test-streams.example/vod/clip.mp4
+#EXTINF:-1 tvg-id="mkv" tvg-name="Matroska MKV" group-title="Formats",Matroska MKV
+#KODIPROP:mimetype=video/x-matroska
+https://test-streams.example/vod/movie.mkv
+#EXTINF:-1 tvg-id="auth" tvg-name="Auth query parameters" group-title="Auth",Auth query parameters
+https://example.com/live/channel.m3u8?token=EXAMPLE_TOKEN&expires=0&sig=EXAMPLE_SIGNATURE
+#EXTINF:-1 tvg-id="redirect" tvg-name="Redirecting URL" group-title="Network",Redirecting URL
+https://httpbin.example/redirect-to?url=https%3A%2F%2Ftest-streams.example%2Flive%2Fstream.m3u8
+#EXTINF:-1 tvg-id="invalid" tvg-name="Invalid URL" group-title="Network",Invalid URL
+not a valid stream target
+#EXTINF:-1 tvg-id="offline" tvg-name="Unavailable stream" group-title="Network",Unavailable stream
+http://127.0.0.1:9/offline.ts
+#EXTGRP:Bulk
+#EXTINF:-1 tvg-id="bulk0" group-title="Bulk",Bulk 0
+https://example.com/bulk/0
+#EXTINF:-1 tvg-id="bulk1" group-title="Bulk",Bulk 1
+https://example.com/bulk/1
