@@ -213,25 +213,14 @@
 <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js"></script>
 <script src="js/stream-detector.js"></script>
 <script src="js/live-player.js"></script>
+<script src="js/smart-proxy-config.js"></script>
 <script src="js/smart-proxy-client.js"></script>
 <script>
-  // Smart Proxy is disabled by default. Set one of these to activate it:
-  //   1) window.KTV_SMART_PROXY_URL below (e.g. https://your-proxy.onrender.com)
-  //   2) ?proxy=https://your-proxy.onrender.com in the address bar
-  //   3) localStorage.setItem('ktvSmartProxyUrl', 'https://your-proxy.onrender.com')
-  // Leaving all three empty restores the original direct/proxy detector flow.
-  window.KTV_SMART_PROXY_URL = window.KTV_SMART_PROXY_URL || '';
-  (function () {
-    var fromQuery = new URLSearchParams(location.search).get('proxy');
-    var fromStorage = '';
-    try { fromStorage = localStorage.getItem('ktvSmartProxyUrl') || ''; } catch (e) {}
-    window.KTV_SMART_PROXY_URL = fromQuery || fromStorage || window.KTV_SMART_PROXY_URL;
-  })();
-
   var PROXY = 'https://t-ahg3.onrender.com';
   var channels = [];
   var activeCategory = 'All';
   var currentPlayer = null;
+  var activeDetectionController = null;
   var playerModal = null;
   var playGeneration = 0;
 
@@ -327,6 +316,10 @@
 
   function stopStream() {
     playGeneration += 1;
+    if (activeDetectionController) {
+      try { activeDetectionController.abort(); } catch (e) {}
+      activeDetectionController = null;
+    }
     if (currentPlayer) {
       try { currentPlayer.destroy(); } catch(e) {}
       currentPlayer = null;
@@ -406,6 +399,9 @@
     stopStream();
     var generation = playGeneration;
     var video = document.getElementById('tvVideo');
+    var detectionController = typeof AbortController !== 'undefined'
+      ? new AbortController() : null;
+    activeDetectionController = detectionController;
 
     playerModal.show();
     setStatus('loading');
@@ -414,13 +410,16 @@
       ? SmartProxyClient.normalizeBase(window.KTV_SMART_PROXY_URL) : '';
 
     if (smartBase && SmartProxyClient.isEnabled(smartBase)) {
-      showLoader(true, 'Detecting ' + ch.name + ' via Smart Proxy...');
+      showLoader(true, 'Detecting ' + ch.name + ' via Smart Proxy ' +
+        '(waking server if needed)...');
       SmartProxyClient.detect(ch.stream, {
         baseUrl: smartBase,
         metadata: ch,
-        timeoutMs: 12000
+        timeoutMs: 30000,
+        signal: detectionController ? detectionController.signal : null
       }).then(function (detected) {
         if (generation !== playGeneration) return;
+        activeDetectionController = null;
         if (!detected || !detected.mediaUrl || !detected.engine ||
             detected.engine === 'unknown') {
           throw new Error((detected && detected.message) ||
@@ -429,6 +428,7 @@
         applyDetected(detected, generation, video, ch);
       }).catch(function (err) {
         if (generation !== playGeneration) return;
+        activeDetectionController = null;
         var reason = (err && err.message) || 'Smart Proxy unavailable.';
         console.warn('[TV] Smart Proxy unavailable: ' + reason);
         showLoader(true, 'Smart Proxy unavailable, trying direct detection...');
@@ -438,6 +438,7 @@
       return;
     }
 
+    activeDetectionController = null;
     showLoader(true, 'Detecting ' + ch.name + ' stream format...');
     detectDirectly(ch, generation, video, []);
   }

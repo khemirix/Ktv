@@ -79,19 +79,24 @@ No real provider playback was performed by the automated suite.
 
 ## Manual Live TV page checks
 
-1. Open `tv.html` normally. Categories, search, logos, and channel selection
-   must work exactly as before. This confirms the default disabled state.
-2. Open `tv.html?proxy=http://localhost:10000` (or your deployed Render URL).
+1. Open `tv.html`. Categories, search, logos, and channel selection must work
+   exactly as before. The proxy URL now comes from `js/smart-proxy-config.js`,
+   so the loader should mention Smart Proxy on channel selection.
+2. Open `tv.html?proxy=off` to confirm the original direct-detector path still
+   works with no code changes. `?proxy=http://localhost:10000` can be used for
+   a local backend during development.
 3. Select a known HLS channel. Loader should mention Smart Proxy, then
    `LIVE`; Network tab should show `/api/detect` followed by `/api/stream`.
 4. Select a known `.ts` channel and an extensionless channel locally. The
    correct engine should start without multiple players being created.
-5. Stop/switch channels repeatedly. `activeStreams` should return to `0` or a
-   small number after old requests close.
+5. Stop/switch channels repeatedly. The previous `/api/detect` request should
+   be aborted and `activeStreams` should return to `0` or a small number.
 6. Temporarily stop the proxy and select a channel. A visible diagnostic should
    appear, then the original detector path should take over.
-7. Remove `?proxy=` (or clear `localStorage.ktvSmartProxyUrl`) to restore the
-   original behavior with no code changes.
+7. Repeat channel selection in an Android browser. Playback and controls must
+   remain unchanged; `AbortController` is feature-detected.
+8. Open an existing movie/TV-show page and play one item. Those players must
+   remain unchanged.
 
 Movies and TV Shows use `js/media-player.js` and are not routed through this
 proxy. Verify their audio-track, quality, and subtitle controls remain

@@ -15,7 +15,7 @@ function loadConfig(env) {
   return {
     port: positiveInt(env, 'PORT', 10000, 1, 65535),
     host: env.HOST || '0.0.0.0',
-    version: env.VERSION || '1.0.0',
+    version: env.VERSION || '1.0.1',
     publicBaseUrl: String(env.SMART_PROXY_PUBLIC_BASE_URL || '').trim(),
     maxUrlLength: positiveInt(env, 'MAX_URL_LENGTH', 4096, 128, 65536),
     connectTimeoutMs: positiveInt(env, 'CONNECT_TIMEOUT_MS', 8000, 500, 60000),
