@@ -6,10 +6,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>IPTV Player</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.7/hls.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.min.js"></script>
-<script src="../js/stream-detector.js"></script>
-<script src="../js/live-player.js"></script>
-<script src="../js/standalone-player.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -155,6 +151,142 @@
   </div>
 
 </div>
+
+<script>
+  var PROXY = 'https://t-ahg3.onrender.com';
+
+  document.getElementById('proxyDisplay').textContent = PROXY;
+
+  var hls = null;
+
+  function log(msg, type) {
+    type = type || 'info';
+    var body = document.getElementById('logBody');
+    var now = new Date().toTimeString().slice(0, 8);
+    var line = document.createElement('div');
+    line.className = 'log-line ' + type;
+    line.innerHTML = '<span class="log-time">[' + now + ']</span>' + msg;
+    body.appendChild(line);
+    body.scrollTop = body.scrollHeight;
+  }
+
+  function clearLog() {
+    document.getElementById('logBody').innerHTML = '';
+  }
+
+  function setStatus(state) {
+    var dot = document.getElementById('statusDot');
+    var tag = document.getElementById('statusTag');
+    dot.className = 'dot';
+    tag.className = 'status-tag';
+    if (state === 'loading') {
+      dot.classList.add('live');
+      tag.classList.add('loading');
+      tag.textContent = 'LOADING';
+    } else if (state === 'playing') {
+      dot.classList.add('ok');
+      tag.classList.add('playing');
+      tag.textContent = 'LIVE';
+    } else if (state === 'error') {
+      tag.classList.add('error');
+      tag.textContent = 'ERROR';
+    } else {
+      tag.classList.add('idle');
+      tag.textContent = 'IDLE';
+    }
+  }
+
+  function showOverlay(show, loading) {
+    var ov = document.getElementById('overlay');
+    if (!show) {
+      ov.classList.add('hidden');
+      return;
+    }
+    ov.classList.remove('hidden');
+    if (loading) {
+      ov.innerHTML = '<div class="spinner"></div><div class="overlay-text">Connecting via proxy...</div>';
+    } else {
+      ov.innerHTML = '<div class="overlay-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div><div class="overlay-text">Enter a stream ID above<br>and press Play</div>';
+    }
+  }
+
+  function destroyHls() {
+    if (hls) { hls.destroy(); hls = null; }
+  }
+
+  function bindVideoEvents(video) {
+    video.onplaying = function() {
+      setStatus('playing');
+      showOverlay(false);
+      log('Playback started.', 'success');
+    };
+    video.onwaiting = function() { log('Buffering...', 'warn'); };
+    video.onerror = function() {
+      setStatus('error');
+      log('Playback error. Stream may not be browser compatible.', 'error');
+    };
+  }
+
+  function loadStream() {
+    var streamId = document.getElementById('streamInput').value.trim();
+    if (!streamId) { log('No stream ID entered.', 'warn'); return; }
+
+    var proxyUrl = PROXY + '/play/' + streamId;
+
+    document.getElementById('streamDisplay').textContent = proxyUrl;
+    document.getElementById('playerTitle').textContent = 'Stream: ' + streamId;
+    document.getElementById('playerTitle').classList.add('active');
+
+    destroyHls();
+    setStatus('loading');
+    showOverlay(true, true);
+    log('Requesting: ' + proxyUrl, 'info');
+
+    var video = document.getElementById('video');
+
+    if (Hls.isSupported()) {
+      hls = new Hls({ enableWorker: true, lowLatencyMode: true, backBufferLength: 30 });
+
+      hls.on(Hls.Events.MANIFEST_PARSED, function() {
+        log('Manifest OK - starting playback.', 'success');
+        video.play().catch(function(e) { log('Autoplay blocked: ' + e.message, 'warn'); });
+      });
+
+      hls.on(Hls.Events.LEVEL_LOADED, function(e, data) {
+        log('Stream type: ' + (data.details.live ? 'LIVE' : 'VOD'), 'success');
+      });
+
+      hls.on(Hls.Events.ERROR, function(event, data) {
+        if (data.fatal) {
+          log('HLS failed, trying native video src...', 'warn');
+          destroyHls();
+          video.src = proxyUrl;
+          bindVideoEvents(video);
+          video.play().catch(function(e) { log('Autoplay blocked: ' + e.message, 'warn'); });
+        }
+      });
+
+      hls.loadSource(proxyUrl);
+      hls.attachMedia(video);
+      bindVideoEvents(video);
+
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = proxyUrl;
+      bindVideoEvents(video);
+      video.play();
+    } else {
+      video.src = proxyUrl;
+      bindVideoEvents(video);
+    }
+  }
+
+  document.getElementById('streamInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') loadStream();
+  });
+
+  log('Player ready. Proxy: ' + PROXY, 'success');
+  showOverlay(true, false);
+</script>
 
 </body>
 </html>
