@@ -129,6 +129,30 @@ test('TLS handshake timeout is classified separately from TCP', async () => {
   }
 });
 
+test('TLS timeout timer starts only after TCP connect', async () => {
+  const proxy = await startProxy({
+    allowPrivate: true,
+    requestOptions: {
+      addresses: [{ address: '192.0.2.1', family: 4 }],
+      maxAddressAttempts: 1,
+      connectTimeoutMs: 800,
+      tlsTimeoutMs: 100,
+      connectionDeadlineMs: 4000,
+      rejectUnauthorized: false
+    }
+  });
+  try {
+    const result = await json(apiUrl(proxy.base, '/api/detect',
+      'https://stream.test:1234/stream.ts'));
+    assert.equal(result.status, 504);
+    assert.equal(result.body.error.code, 'CONNECT_TIMEOUT',
+      'a pre-connect TLS timer must not mask TCP connection failure');
+    assert.equal(result.body.error.diagnostics.attempts[0].tlsMs, null);
+  } finally {
+    await proxy.close();
+  }
+});
+
 test('slow response headers succeed with a generous budget and report header timing', async () => {
   const upstream = await startUpstream();
   const proxy = await startProxy({ headersTimeoutMs: '1500' });

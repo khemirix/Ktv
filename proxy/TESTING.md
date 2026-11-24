@@ -37,13 +37,15 @@ Command:
 cd proxy && npm test
 ```
 
-Result: **43/43 tests passed** (detection, progressive forwarding, Range/HEAD,
+Result: **53/53 tests passed** (detection, progressive forwarding, Range/HEAD,
 client disconnect, live streams, safe errors, frontend client retry/abort,
 health, HLS rewriting, HTTPS HLS, slow headers, DNS classification/retry,
 HTTP→HTTPS redirects, nested playlists, security, address fallback, IPv6
-fallback, TCP/TLS/header timeout classification, bounded attempts, overall
-connection deadline, resettable idle timeout, Host/SNI preservation, and safe
-connection diagnostics).
+fallback, TCP/TLS/header timeout classification, TLS timer lifecycle, bounded
+attempts, overall connection deadline, resettable idle timeout, Host/SNI
+preservation, safe connection diagnostics, and gated TCP diagnostics including
+success, timeout, refusal, DNS failure, invalid input, token/auth failures,
+disabled endpoint, and private-address rejection).
 
 Existing website regression command from the repository root:
 
@@ -86,6 +88,35 @@ performed by the automated suite.
 | 22 | VLC compatibility profile | Set `UPSTREAM_USER_AGENT_PROFILE=vlc`, restart, and detect a local mock | Upstream receives `VLC/3.0.21 LibVLC/3.0.21`; Range headers are still preserved. This is only a compatibility probe, not a universal fix. |
 | 23 | Continuous live stream | Play a TS channel that sends chunks for longer than 60 seconds | Stream stays connected; the idle timer resets on every chunk and no `STREAM_IDLE_TIMEOUT` occurs. |
 | 24 | Genuinely stalled stream | Use a mock that stops sending while holding the socket open | Stream closes after `IDLE_TIMEOUT_MS`; upstream socket is released. |
+| 25 | TCP diagnostics disabled | Request `/api/diag/tcp?host=example.test&port=80` without the gate | HTTP `404` even with a token. |
+| 26 | TCP diagnostics auth | Enable the gate; request with no/wrong `DIAGNOSTICS_TOKEN` header | HTTP `401`. |
+| 27 | TCP diagnostics input | Request with `host=localhost`, `port=70000`, or an extra `url=` parameter | HTTP `400`. |
+| 28 | TCP diagnostics SSRF | Inject/return a private address for the host | HTTP `403` `BLOCKED_ADDRESS`; no socket is opened. |
+| 29 | TCP diagnostics real probe | Request with only the provider hostname and port | `200` with `ok`, `dnsMs`, `addressCount`, family, timing, `connectEvent`, and error code. No full URL, token, or resolved IP in the response. |
+
+---
+
+## Temporary TCP diagnostics
+
+On Render, set exactly:
+
+```text
+ALLOW_TCP_DIAGNOSTICS=true
+DIAGNOSTICS_TOKEN=<choose-a-secret>
+VERSION=1.4.0
+```
+
+Then request:
+
+```bash
+curl -sS -H 'DIAGNOSTICS_TOKEN: <secret>' \
+  'https://ktv-edmu.onrender.com/api/diag/tcp?host=<provider-hostname>&port=<port>'
+```
+
+Send only the hostname and numeric port. Do **not** send a full stream URL,
+path, username, password, or query string. After testing, set
+`ALLOW_TCP_DIAGNOSTICS=false` or remove both diagnostic variables and redeploy;
+the endpoint will return `404`.
 
 ---
 

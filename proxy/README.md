@@ -103,7 +103,7 @@ no `.env` file is needed.
 |---|---:|---|
 | `PORT` | `10000` | Listen port. Render supplies this automatically. |
 | `HOST` | `0.0.0.0` | Listen address. |
-| `VERSION` | `1.3.0` | Reported by `/health`. |
+| `VERSION` | `1.4.0` | Reported by `/health`. |
 | `SMART_PROXY_PUBLIC_BASE_URL` | derived from request | Public base URL used when rewriting HLS playlist references. Set this on Render. |
 | `MAX_URL_LENGTH` | `4096` | Rejects overly long stream URLs. |
 | `DNS_TIMEOUT_MS` | `4000` | Timeout for each DNS lookup attempt. |
@@ -120,6 +120,8 @@ no `.env` file is needed.
 | `UPSTREAM_ACCEPT` | `*/*` | Upstream Accept header. |
 | `UPSTREAM_ACCEPT_LANGUAGE` | empty | Optional upstream Accept-Language header. |
 | `UPSTREAM_REFERER` | empty | Optional upstream Referer header. Client cookies and auth are never forwarded. |
+| `ALLOW_TCP_DIAGNOSTICS` | `false` | Temporary gate for `/api/diag/tcp`. Must be exactly `true` to expose the endpoint. |
+| `DIAGNOSTICS_TOKEN` | empty | Required `DIAGNOSTICS_TOKEN` request header value. Never commit this value. |
 | `DETECT_MAX_BYTES` | `65536` | Max bytes read by detection. Streams are never fully downloaded. |
 | `MAX_PLAYLIST_BYTES` | `1048576` | Safety cap for playlist buffering. |
 | `PEEK_BYTES` | `16384` | Hint kept for compatibility; forwarding releases the first chunk immediately. |
@@ -148,7 +150,7 @@ query strings, headers, and tokens are never echoed.
   "ok": true,
   "status": "ok",
   "service": "khemirix-smart-proxy",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "uptimeSeconds": 42,
   "activeStreams": 0,
   "maxStreams": 100,
@@ -207,6 +209,35 @@ Progressively forwards the upstream response.
 
 Response headers include `X-Proxy-Format`, `X-Proxy-Engine`, `X-Proxy-Via`,
 and `Cache-Control: no-store`.
+
+### `GET /api/diag/tcp?host=HOST&port=PORT` — temporary
+
+Hidden by default. Requires both:
+
+```text
+ALLOW_TCP_DIAGNOSTICS=true
+DIAGNOSTICS_TOKEN=<a secret you choose on Render>
+```
+
+Request:
+
+```bash
+curl -H 'DIAGNOSTICS_TOKEN: <secret>' \
+  'https://<proxy-host>/api/diag/tcp?host=provider.example&port=12345'
+```
+
+Only `host` and `port` are accepted. Full stream URLs, paths, credentials,
+query strings, and extra parameters are rejected. The host is resolved and
+SSRF-validated exactly like a stream host; private, loopback, link-local,
+metadata, and other non-public addresses are rejected. All validated public
+addresses are tested with the existing bounded TCP timeout and deadline.
+
+Public responses contain hashed host/IP identifiers, port, address family,
+timings, socket error code, and whether `connect` fired. Full IPs are written
+only to server logs while the endpoint is enabled.
+
+To disable after testing: set `ALLOW_TCP_DIAGNOSTICS=false` or remove both
+variables and redeploy. The endpoint then returns `404`.
 
 ---
 

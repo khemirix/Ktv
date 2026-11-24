@@ -26,7 +26,7 @@ function loadConfig(env) {
   return {
     port: positiveInt(env, 'PORT', 10000, 1, 65535),
     host: env.HOST || '0.0.0.0',
-    version: env.VERSION || '1.3.0',
+    version: env.VERSION || '1.4.0',
     publicBaseUrl: String(env.SMART_PROXY_PUBLIC_BASE_URL || '').trim(),
     maxUrlLength: positiveInt(env, 'MAX_URL_LENGTH', 4096, 128, 65536),
 
@@ -51,6 +51,10 @@ function loadConfig(env) {
     upstreamAccept: String(env.UPSTREAM_ACCEPT || '*/*').trim() || '*/*',
     upstreamAcceptLanguage: String(env.UPSTREAM_ACCEPT_LANGUAGE || '').trim(),
     upstreamReferer: String(env.UPSTREAM_REFERER || '').trim(),
+
+    // Temporary TCP diagnostics. Both must be set; the endpoint is hidden by default.
+    allowTcpDiagnostics: String(env.ALLOW_TCP_DIAGNOSTICS || '').toLowerCase() === 'true',
+    diagnosticsToken: String(env.DIAGNOSTICS_TOKEN || ''),
 
     detectMaxBytes: positiveInt(env, 'DETECT_MAX_BYTES', 65536, 512, 1048576),
     maxPlaylistBytes: positiveInt(env, 'MAX_PLAYLIST_BYTES', 1048576, 4096, 16777216),

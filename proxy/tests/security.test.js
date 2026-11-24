@@ -12,10 +12,13 @@ const { startUpstream, startProxy, apiUrl, json } = require('./helpers');
 test('IP classifier blocks private, loopback, link-local, CGNAT, and metadata ranges', () => {
   ['127.0.0.1', '10.0.0.5', '172.16.4.2', '192.168.1.10',
    '169.254.169.254', '100.100.100.200', '0.0.0.0', '224.0.0.1',
-   '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1'].forEach(ip => {
+   '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1',
+   '::127.0.0.1', '::7f00:1', '::ffff:0:127.0.0.1',
+   '2002:7f00:1::', '2001:0:4136:e378:8000:63bf:3fff:fdd2'].forEach(ip => {
     assert.equal(isUnsafeIp(ip), true, ip + ' should be blocked');
   });
-  ['8.8.8.8', '93.184.216.34', '2606:4700:4700::1111'].forEach(ip => {
+  ['8.8.8.8', '93.184.216.34', '2606:4700:4700::1111',
+   '::ffff:8.8.8.8'].forEach(ip => {
     assert.equal(isUnsafeIp(ip), false, ip + ' should be allowed');
   });
 });

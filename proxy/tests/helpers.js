@@ -385,7 +385,9 @@ async function startProxy(options) {
     config: cfg,
     allowPrivate: options.allowPrivate !== false,
     allowPrivateRedirects: !!options.allowPrivateRedirects,
-    requestOptions: options.requestOptions || {}
+    requestOptions: options.requestOptions || {},
+    tcpDiagnosticsValidationOptions: options.tcpDiagnosticsValidationOptions || null,
+    tcpDiagnosticsConnector: options.tcpDiagnosticsConnector || null
   });
   var port = await listen(app.server);
   return {

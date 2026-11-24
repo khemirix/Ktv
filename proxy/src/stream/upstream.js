@@ -117,6 +117,9 @@ function attemptConnect(rawUrl, options, validated, address, attemptNumber, dnsM
     var idleGuard = null;
     var responseRef = null;
     var onAbort = null;
+    var socketRef = null;
+    var socketConnectListener = null;
+    var socketSecureListener = null;
 
     function clearConnect() {
       if (connectTimer) { clearTimeout(connectTimer); connectTimer = null; }
@@ -133,6 +136,17 @@ function attemptConnect(rawUrl, options, validated, address, attemptNumber, dnsM
     function clearIdle() {
       if (idleGuard) { idleGuard.dispose(); idleGuard = null; }
     }
+    function clearSocketListeners() {
+      if (socketRef && socketConnectListener) {
+        socketRef.removeListener('connect', socketConnectListener);
+      }
+      if (socketRef && socketSecureListener) {
+        socketRef.removeListener('secureConnect', socketSecureListener);
+      }
+      socketRef = null;
+      socketConnectListener = null;
+      socketSecureListener = null;
+    }
     function removeAbort() {
       if (!signal || !onAbort) return;
       if (typeof signal.removeEventListener === 'function') {
@@ -148,6 +162,7 @@ function attemptConnect(rawUrl, options, validated, address, attemptNumber, dnsM
       clearHeader();
       clearDeadline();
       clearIdle();
+      clearSocketListeners();
       removeAbort();
     }
 
@@ -200,6 +215,7 @@ function attemptConnect(rawUrl, options, validated, address, attemptNumber, dnsM
       clearTls();
       clearHeader();
       clearDeadline();
+      clearSocketListeners();
 
       if (settled) {
         try { response.destroy(); } catch (e) {}
@@ -266,30 +282,9 @@ function attemptConnect(rawUrl, options, validated, address, attemptNumber, dnsM
 
     request.on('socket', function (socket) {
       if (!socket || settled) return;
-      if (socket.connecting) {
-        connectTimer = setTimeout(function () {
-          timings.tcpMs = Date.now() - requestStart;
-          destroyWith(timedError('CONNECT_TIMEOUT',
-            'The connection to the stream host timed out.'));
-        }, options.connectTimeoutMs || config.connectTimeoutMs);
-        socket.once('connect', function () {
-          tcpAt = Date.now();
-          timings.tcpMs = tcpAt - requestStart;
-          clearConnect();
-          if (target.protocol !== 'https:') clearTls();
-        });
-        if (target.protocol === 'https:') {
-          tlsTimer = setTimeout(function () {
-            timings.tlsMs = tcpAt ? Date.now() - tcpAt : null;
-            destroyWith(timedError('TLS_TIMEOUT',
-              'The secure handshake with the stream host timed out.'));
-          }, options.tlsTimeoutMs || config.tlsTimeoutMs);
-          socket.once('secureConnect', function () {
-            timings.tlsMs = tcpAt ? Date.now() - tcpAt : null;
-            clearTls();
-          });
-        }
-      } else {
+      socketRef = socket;
+
+      if (!socket.connecting) {
         tcpAt = Date.now();
         timings.tcpMs = 0;
         clearConnect();
@@ -297,7 +292,38 @@ function attemptConnect(rawUrl, options, validated, address, attemptNumber, dnsM
           timings.tlsMs = 0;
           clearTls();
         }
+        return;
       }
+
+      connectTimer = setTimeout(function () {
+        timings.tcpMs = Date.now() - requestStart;
+        destroyWith(timedError('CONNECT_TIMEOUT',
+          'The connection to the stream host timed out.'));
+      }, options.connectTimeoutMs || config.connectTimeoutMs);
+
+      socketConnectListener = function () {
+        tcpAt = Date.now();
+        timings.tcpMs = tcpAt - requestStart;
+        clearConnect();
+        if (socketRef !== socket) return;
+
+        // TLS timing starts only after TCP connect, not at socket assignment.
+        if (target.protocol === 'https:') {
+          tlsTimer = setTimeout(function () {
+            timings.tlsMs = tcpAt ? Date.now() - tcpAt : null;
+            destroyWith(timedError('TLS_TIMEOUT',
+              'The secure handshake with the stream host timed out.'));
+          }, options.tlsTimeoutMs || config.tlsTimeoutMs);
+          socketSecureListener = function () {
+            timings.tlsMs = tcpAt ? Date.now() - tcpAt : null;
+            clearTls();
+          };
+          socket.once('secureConnect', socketSecureListener);
+        } else {
+          clearTls();
+        }
+      };
+      socket.once('connect', socketConnectListener);
     });
 
     request.on('error', function (err) {

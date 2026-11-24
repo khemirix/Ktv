@@ -11,7 +11,7 @@ services:
       - key: SMART_PROXY_PUBLIC_BASE_URL
         sync: false
       - key: VERSION
-        value: 1.3.0
+        value: 1.4.0
       - key: PROCESSING_ENGINE
         value: direct
       - key: DNS_TIMEOUT_MS

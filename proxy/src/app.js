@@ -12,6 +12,7 @@ const { healthHandler } = require('./routes/health');
 const { detectHandler } = require('./routes/detect');
 const { streamInfoHandler } = require('./routes/stream-info');
 const { streamHandler } = require('./routes/stream');
+const { tcpDiagnosticsHandler } = require('./routes/tcp-diagnostics');
 
 function createApp(overrides) {
   overrides = overrides || {};
@@ -71,7 +72,9 @@ function createApp(overrides) {
       connectionLimit: connectionLimit,
       engine: engine,
       publicBaseUrl: publicBaseFromRequest(req, cfg),
-      requestOptions: requestOptions
+      requestOptions: requestOptions,
+      tcpDiagnosticsValidationOptions: overrides.tcpDiagnosticsValidationOptions || null,
+      tcpDiagnosticsConnector: overrides.tcpDiagnosticsConnector || null
     };
 
     try {
@@ -84,6 +87,8 @@ function createApp(overrides) {
       } else if (ctx.path === '/api/stream' &&
                  (req.method === 'GET' || req.method === 'HEAD')) {
         await streamHandler(ctx);
+      } else if (ctx.path === '/api/diag/tcp' && req.method === 'GET') {
+        await tcpDiagnosticsHandler(ctx);
       } else {
         sendError(res, 404, 'NOT_FOUND', 'The requested endpoint does not exist.');
       }
