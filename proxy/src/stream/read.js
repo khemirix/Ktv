@@ -51,7 +51,7 @@ function peek(response, maxBytes) {
 
 // Collects a bounded body (playlists, detection prefixes). The response is
 // destroyed once the limit is reached.
-function collectUpTo(response, maxBytes) {
+function collectUpTo(response, maxBytes, onChunk) {
   return new Promise(function (resolve, reject) {
     var chunks = [];
     var total = 0;
@@ -73,6 +73,7 @@ function collectUpTo(response, maxBytes) {
     }
     function onData(chunk) {
       var buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if (onChunk) onChunk(buffer);
       var remaining = maxBytes - total;
       if (remaining > 0) chunks.push(buffer.slice(0, remaining));
       total += buffer.length;
@@ -130,6 +131,7 @@ function readWithDecision(response, options) {
 
     function onData(chunk) {
       var buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if (options.onChunk) options.onChunk(buffer);
       chunks.push(buffer);
       total += buffer.length;
 

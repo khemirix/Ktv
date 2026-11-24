@@ -74,25 +74,74 @@ async function lookupWithRetry(hostname, options) {
   throw error;
 }
 
+function orderedAddresses(records) {
+  var seen = Object.create(null);
+  var out = [];
+  (records || []).forEach(function (record) {
+    if (!record || !record.address) return;
+    var address = String(record.address);
+    var family = Number(record.family) || net.isIP(address);
+    if (!family || seen[family + ':' + address]) return;
+    seen[family + ':' + address] = true;
+    out.push({ address: address, family: family });
+  });
+  // IPv4 first keeps existing behavior; IPv6 remains available for failover.
+  return out.filter(function (record) { return record.family === 4; })
+    .concat(out.filter(function (record) { return record.family === 6; }));
+}
+
 async function resolveSafeAddress(hostname, options) {
-  if (net.isIP(hostname)) {
-    var family = net.isIP(hostname);
-    if (isUnsafeIp(hostname)) {
-      throw proxyError(403, 'BLOCKED_ADDRESS', 'The stream host is not allowed.');
-    }
-    return { address: hostname, family: family };
+  options = options || {};
+  var injected = null;
+  if (options.addressMap && Object.prototype.hasOwnProperty.call(options.addressMap, hostname)) {
+    injected = options.addressMap[hostname];
+  } else if (Object.prototype.hasOwnProperty.call(options, 'addresses')) {
+    injected = options.addresses;
   }
 
-  var records = await lookupWithRetry(hostname, options || {});
-  var safe = records.filter(function (record) { return !isUnsafeIp(record.address); });
+  if (net.isIP(hostname) || injected) {
+    var source = injected || [{ address: hostname, family: net.isIP(hostname) }];
+    var direct = orderedAddresses(source);
+    if (!direct.length) {
+      throw proxyError(502, 'DNS_FAILURE', 'The stream host could not be resolved.');
+    }
+    if (!options.allowPrivate) {
+      var directSafe = direct.filter(function (record) { return !isUnsafeIp(record.address); });
+      if (!directSafe.length) {
+        throw proxyError(403, 'BLOCKED_ADDRESS', 'The stream host is not allowed.');
+      }
+      direct = directSafe;
+    }
+    return {
+      addresses: direct,
+      address: direct[0].address,
+      family: direct[0].family,
+      pinned: true
+    };
+  }
+
+  if (options.allowPrivate) {
+    return {
+      addresses: [{ address: hostname, family: 0 }],
+      address: hostname,
+      family: 0,
+      pinned: false
+    };
+  }
+
+  var records = await lookupWithRetry(hostname, options);
+  var safe = orderedAddresses(records).filter(function (record) {
+    return !isUnsafeIp(record.address);
+  });
   if (!safe.length) {
     throw proxyError(403, 'BLOCKED_ADDRESS', 'The stream host is not allowed.');
   }
-
-  // Prefer IPv4, but allow public IPv6 when no IPv4 record is available.
-  var ipv4 = safe.filter(function (record) { return record.family === 4; });
-  var chosen = ipv4[0] || safe[0];
-  return { address: chosen.address, family: chosen.family };
+  return {
+    addresses: safe,
+    address: safe[0].address,
+    family: safe[0].family,
+    pinned: true
+  };
 }
 
 async function validateUrl(raw, options) {
@@ -125,11 +174,15 @@ async function validateUrl(raw, options) {
     throw proxyError(400, 'INVALID_URL', 'The stream URL has no host.');
   }
 
-  if (options.allowPrivate) {
+  if (options.allowPrivate && !options.addresses &&
+      !(options.addressMap && Object.prototype.hasOwnProperty.call(options.addressMap, hostname)) &&
+      !net.isIP(hostname)) {
     return {
       url: parsed,
       address: hostname,
-      family: net.isIP(hostname) || 0,
+      family: 0,
+      addresses: [{ address: hostname, family: 0 }],
+      pinned: false,
       safe: false
     };
   }
@@ -139,7 +192,9 @@ async function validateUrl(raw, options) {
     url: parsed,
     address: resolved.address,
     family: resolved.family,
-    safe: true
+    addresses: resolved.addresses,
+    pinned: resolved.pinned,
+    safe: !options.allowPrivate
   };
 }
 

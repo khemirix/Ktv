@@ -34,6 +34,13 @@ function createApp(overrides) {
     tlsTimeoutMs: cfg.tlsTimeoutMs,
     headersTimeoutMs: cfg.headersTimeoutMs,
     idleTimeoutMs: cfg.idleTimeoutMs,
+    maxAddressAttempts: cfg.maxAddressAttempts,
+    connectionDeadlineMs: cfg.connectionDeadlineMs,
+    upstreamUserAgent: cfg.upstreamUserAgent,
+    upstreamUserAgentProfile: cfg.upstreamUserAgentProfile,
+    upstreamAccept: cfg.upstreamAccept,
+    upstreamAcceptLanguage: cfg.upstreamAcceptLanguage,
+    upstreamReferer: cfg.upstreamReferer,
     maxRedirects: cfg.maxRedirects
   }, overrides.requestOptions || {});
 

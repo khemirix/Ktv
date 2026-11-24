@@ -103,7 +103,7 @@ no `.env` file is needed.
 |---|---:|---|
 | `PORT` | `10000` | Listen port. Render supplies this automatically. |
 | `HOST` | `0.0.0.0` | Listen address. |
-| `VERSION` | `1.2.0` | Reported by `/health`. |
+| `VERSION` | `1.3.0` | Reported by `/health`. |
 | `SMART_PROXY_PUBLIC_BASE_URL` | derived from request | Public base URL used when rewriting HLS playlist references. Set this on Render. |
 | `MAX_URL_LENGTH` | `4096` | Rejects overly long stream URLs. |
 | `DNS_TIMEOUT_MS` | `4000` | Timeout for each DNS lookup attempt. |
@@ -112,7 +112,14 @@ no `.env` file is needed.
 | `CONNECT_TIMEOUT_MS` | `10000` | TCP connection timeout. |
 | `TLS_TIMEOUT_MS` | `10000` | HTTPS handshake timeout. |
 | `HEADERS_TIMEOUT_MS` | `20000` | Maximum wait for upstream response headers. |
-| `IDLE_TIMEOUT_MS` | `60000` | Upstream inactivity timeout for long streams. |
+| `IDLE_TIMEOUT_MS` | `60000` | Upstream inactivity timeout; resets whenever new data arrives. |
+| `MAX_ADDRESS_ATTEMPTS` | `4` | Maximum validated IP addresses tried per hostname. |
+| `CONNECTION_DEADLINE_MS` | `30000` | Overall deadline across address attempts. |
+| `UPSTREAM_USER_AGENT` | empty | Explicit User-Agent override. |
+| `UPSTREAM_USER_AGENT_PROFILE` | `default` | `default` or `vlc` (VLC-compatible profile for IPTV testing). |
+| `UPSTREAM_ACCEPT` | `*/*` | Upstream Accept header. |
+| `UPSTREAM_ACCEPT_LANGUAGE` | empty | Optional upstream Accept-Language header. |
+| `UPSTREAM_REFERER` | empty | Optional upstream Referer header. Client cookies and auth are never forwarded. |
 | `DETECT_MAX_BYTES` | `65536` | Max bytes read by detection. Streams are never fully downloaded. |
 | `MAX_PLAYLIST_BYTES` | `1048576` | Safety cap for playlist buffering. |
 | `PEEK_BYTES` | `16384` | Hint kept for compatibility; forwarding releases the first chunk immediately. |
@@ -141,7 +148,7 @@ query strings, headers, and tokens are never echoed.
   "ok": true,
   "status": "ok",
   "service": "khemirix-smart-proxy",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "uptimeSeconds": 42,
   "activeStreams": 0,
   "maxStreams": 100,
@@ -274,13 +281,21 @@ Formats that would need remuxing/transcoding in a future engine:
 - Rejects URL-embedded credentials.
 - Blocks loopback, private IPv4/IPv6, link-local, CGNAT, multicast, reserved,
   and cloud metadata ranges.
-- DNS resolution is checked and the chosen IP is pinned with a custom `lookup`
-  callback, mitigating DNS rebinding.
+- DNS resolution is checked and **all** validated public addresses are kept.
+  Each connection is pinned to one validated IP with a custom `lookup`
+  callback, mitigating DNS rebinding. The original hostname is retained for
+  the HTTP `Host` header and TLS SNI/certificate verification.
+- If a validated address fails or times out, the proxy tries another validated
+  address, bounded by `MAX_ADDRESS_ATTEMPTS` and `CONNECTION_DEADLINE_MS`. No
+  extra DNS lookup happens during failover; blocked IPs are never retried.
 - Redirect destinations are resolved and revalidated before connecting. For
   tests only, a localhost allowance can be extended to redirects via
   `allowPrivateRedirects`; production never enables it.
-- Redirect limit, header timeout, idle timeout, rate limit, and concurrent
-  stream limit are configurable.
+- Redirect limit, separate TCP/TLS/header/idle timeouts, rate limit, and
+  concurrent stream limit are configurable. Idle time resets on new data.
+- Failed attempts return safe diagnostics: DNS duration, validated address
+  count, address family, attempt number, TCP/TLS/header durations, and error
+  code. URLs, IPs, credentials, query strings, and headers are not exposed.
 - Errors are sanitized; logs redact URLs to `protocol//host/<redacted>` and
   never include query strings, tokens, or headers.
 

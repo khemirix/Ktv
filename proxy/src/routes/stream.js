@@ -34,7 +34,7 @@ async function streamHandler(ctx) {
   try {
     var opened = await openUpstream(rawUrl, Object.assign({}, ctx.requestOptions, {
       method: ctx.req.method || 'GET',
-      headers: clientRequestHeaders(ctx.req),
+      headers: clientRequestHeaders(ctx.req, ctx.requestOptions),
       signal: abort.signal
     }));
     upstream = opened.response;

@@ -1,6 +1,6 @@
 {
   "name": "khemirix-smart-proxy",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "private": true,
   "description": "Independent live TV stream proxy for Khemirix TV",
   "main": "server.js",

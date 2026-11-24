@@ -3,6 +3,7 @@
 const { openUpstream } = require('../stream/upstream');
 const { collectUpTo } = require('../stream/read');
 const { config } = require('../config');
+const { upstreamRequestHeaders } = require('../utils/headers');
 const { proxyError } = require('../utils/errors');
 const sniff = require('./sniff');
 const { parsePlaylist } = require('./playlist');
@@ -95,13 +96,9 @@ function liveStatus(format, playlist) {
 async function detectStream(rawUrl, options) {
   options = options || {};
   var maxBytes = options.detectMaxBytes || config.detectMaxBytes;
-  var headers = Object.assign({
-    'User-Agent': 'KhemirixSmartProxy/1.0 (detect)',
-    Accept: '*/*',
-    'Accept-Encoding': 'identity',
-    Connection: 'close',
-    Range: 'bytes=0-' + (maxBytes - 1)
-  }, options.headers || {});
+  var headers = upstreamRequestHeaders({}, Object.assign({}, config, options));
+  headers.Range = 'bytes=0-' + (maxBytes - 1);
+  Object.assign(headers, options.headers || {});
 
   var opened = await openUpstream(rawUrl, Object.assign({}, options, {
     method: 'GET',
@@ -109,7 +106,11 @@ async function detectStream(rawUrl, options) {
   }));
 
   try {
-    var collected = await collectUpTo(opened.response, maxBytes);
+    var collected = await collectUpTo(
+      opened.response,
+      maxBytes,
+      opened.idleGuard && opened.idleGuard.touch
+    );
     var upstreamStatus = opened.response.statusCode || 0;
     if (upstreamStatus >= 400) {
       throw proxyError(upstreamStatus, 'UPSTREAM_HTTP_ERROR',
@@ -144,7 +145,8 @@ async function detectStream(rawUrl, options) {
       proxyStreamingSupported: ['hls', 'mpegts', 'mp4', 'webm', 'ogg'].indexOf(format) !== -1,
       confidence: resolved.confidence,
       reason: resolved.reason,
-      diagnostics: resolved.diagnostics,
+      diagnostics: resolved.diagnostics.concat(opened.diagnostics || []),
+      connection: opened.connection || null,
       status: upstreamStatus,
       rangeSupported: rangeSupported,
       playlist: playlist,

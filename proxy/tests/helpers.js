@@ -2,6 +2,7 @@
 
 const http = require('node:http');
 const https = require('node:https');
+const net = require('node:net');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createApp } = require('../src/app');
@@ -31,6 +32,27 @@ function listen(server) {
   });
 }
 
+function listenOn(server, host, port) {
+  return new Promise(function (resolve, reject) {
+    server.once('error', reject);
+    server.listen(port, host, function () {
+      server.removeListener('error', reject);
+      resolve(server.address());
+    });
+  });
+}
+
+function freePort() {
+  return new Promise(function (resolve, reject) {
+    var probe = net.createServer();
+    probe.once('error', reject);
+    probe.listen(0, '127.0.0.1', function () {
+      var port = probe.address().port;
+      probe.close(function () { resolve(port); });
+    });
+  });
+}
+
 function close(server) {
   return new Promise(function (resolve) {
     if (!server || !server.listening) { resolve(); return; }
@@ -39,7 +61,16 @@ function close(server) {
 }
 
 function state() {
-  return { requests: [], slowClosed: false, sockets: new Set(), port: 0 };
+  return {
+    requests: [],
+    hosts: [],
+    userAgents: [],
+    servernames: [],
+    connections: 0,
+    slowClosed: false,
+    sockets: new Set(),
+    port: 0
+  };
 }
 
 function createUpstreamHandler(s) {
@@ -47,6 +78,8 @@ function createUpstreamHandler(s) {
     var parsed = new URL(req.url || '/', 'http://localhost');
     var pathName = parsed.pathname;
     s.requests.push(parsed.pathname + parsed.search);
+    s.hosts.push(req.headers.host || '');
+    s.userAgents.push(req.headers['user-agent'] || '');
 
     if (pathName === '/stream.ts') {
       res.writeHead(200, { 'Content-Type': 'video/mp2t' });
@@ -226,6 +259,17 @@ function createUpstreamHandler(s) {
       });
       return;
     }
+    if (pathName === '/stall') {
+      res.writeHead(200, { 'Content-Type': 'video/mp2t' });
+      res.write(tsBytes(188));
+      s.sockets.add(req.socket);
+      req.socket.on('close', function () { s.slowClosed = true; });
+      setTimeout(function () {
+        if (!res.destroyed) res.write(Buffer.from([0x47, 0x40, 0x00, 0x11]));
+      }, 100);
+      // Then stop sending while the socket stays open.
+      return;
+    }
     if (pathName === '/never') return;
 
     res.writeHead(500, { 'Content-Type': 'text/plain' });
@@ -250,10 +294,79 @@ async function startHttpsUpstream() {
     cert: fs.readFileSync(path.join(fixtureDir, 'localhost.crt'))
   };
   var server = https.createServer(credentials, createUpstreamHandler(s));
+  server.on('secureConnection', function (socket) {
+    s.servernames.push(socket.servername || '');
+  });
   s.port = await listen(server);
   s.base = 'https://localhost:' + s.port;
   s.httpsBase = s.base;
   s.close = function () { return close(server); };
+  return s;
+}
+
+// Two servers on the same port, bound to different loopback addresses. The
+// first can be made to fail/hold; the second succeeds. Useful for address
+// fallback tests without relying on external DNS.
+async function startFallbackServers(options) {
+  options = options || {};
+  var port = await freePort();
+  var first = state();
+  first.port = port;
+  var firstServer = http.createServer(function (req, res) {
+    first.requests.push(req.url || '/');
+    first.hosts.push(req.headers.host || '');
+    if (options.first === 'hold') {
+      first.sockets.add(req.socket);
+      return;
+    }
+    if (options.first === 'redirect') {
+      res.writeHead(302, { Location: 'http://other.test:' + port + '/stream.ts' });
+      res.end();
+      return;
+    }
+    req.socket.destroy();
+  });
+  firstServer.on('connection', function (socket) {
+    first.connections += 1;
+    socket.on('close', function () { first.slowClosed = true; });
+  });
+  await listenOn(firstServer, '127.0.0.1', port);
+
+  var second = state();
+  second.port = port;
+  var secondServer = http.createServer(createUpstreamHandler(second));
+  secondServer.on('connection', function () { second.connections += 1; });
+  await listenOn(secondServer, options.secondHost || '127.0.0.2', port);
+
+  return {
+    port: port,
+    first: first,
+    second: second,
+    base: 'http://stream.test:' + port,
+    firstServer: firstServer,
+    secondServer: secondServer,
+    close: async function () {
+      await close(firstServer);
+      await close(secondServer);
+    }
+  };
+}
+
+// Accepts TCP connections but never completes a TLS handshake.
+async function startTlsSink() {
+  var s = state();
+  var server = net.createServer(function (socket) {
+    s.connections += 1;
+    s.sockets.add(socket);
+    socket.on('close', function () { s.slowClosed = true; });
+  });
+  var address = await listenOn(server, '127.0.0.1', 0);
+  s.port = address.port;
+  s.base = 'https://stream.test:' + s.port;
+  s.close = async function () {
+    s.sockets.forEach(function (socket) { socket.destroy(); });
+    await close(server);
+  };
   return s;
 }
 
@@ -310,6 +423,8 @@ module.exports = {
   mp4Bytes,
   startUpstream,
   startHttpsUpstream,
+  startFallbackServers,
+  startTlsSink,
   startProxy,
   apiUrl,
   json,

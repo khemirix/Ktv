@@ -33,6 +33,30 @@ test('URL validation restricts protocols, credentials, length, and private hosts
     err => err.code === 'INVALID_URL');
 });
 
+test('URL validation keeps all validated public addresses, IPv4 first', async () => {
+  let lookups = 0;
+  const resolved = await validateUrl('http://example.test/live', {
+    dnsLookup: async function () {
+      lookups += 1;
+      return [
+        { address: '2606:4700::1111', family: 6 },
+        { address: '93.184.216.34', family: 4 },
+        { address: '8.8.8.8', family: 4 },
+        { address: '127.0.0.1', family: 4 }
+      ];
+    }
+  });
+
+  assert.equal(lookups, 1);
+  assert.equal(resolved.pinned, true);
+  assert.equal(resolved.address, '93.184.216.34');
+  assert.deepEqual(resolved.addresses, [
+    { address: '93.184.216.34', family: 4 },
+    { address: '8.8.8.8', family: 4 },
+    { address: '2606:4700::1111', family: 6 }
+  ]);
+});
+
 test('rate limiter and connection limiter enforce configured bounds', () => {
   const limit = createRateLimiter({ windowMs: 60000, max: 2 });
   assert.equal(limit('client-a').allowed, true);

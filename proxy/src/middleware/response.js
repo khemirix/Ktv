@@ -26,7 +26,8 @@ function sendRouteError(res, err) {
       error: {
         code: err.code,
         message: err.message,
-        details: err.details || []
+        details: err.details || [],
+        diagnostics: err.diagnostics || null
       }
     });
     return;

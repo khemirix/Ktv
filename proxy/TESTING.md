@@ -37,10 +37,13 @@ Command:
 cd proxy && npm test
 ```
 
-Result: **30/30 tests passed** (detection, progressive forwarding, Range/HEAD,
+Result: **43/43 tests passed** (detection, progressive forwarding, Range/HEAD,
 client disconnect, live streams, safe errors, frontend client retry/abort,
 health, HLS rewriting, HTTPS HLS, slow headers, DNS classification/retry,
-HTTP→HTTPS redirects, nested playlists, and security).
+HTTP→HTTPS redirects, nested playlists, security, address fallback, IPv6
+fallback, TCP/TLS/header timeout classification, bounded attempts, overall
+connection deadline, resettable idle timeout, Host/SNI preservation, and safe
+connection diagnostics).
 
 Existing website regression command from the repository root:
 
@@ -52,8 +55,6 @@ Result: **9/9 tests passed across 6 files** (stream-detector checks,
 live-player checks, media-player quality, app quality flow, player features,
 and 4 new Live TV integration assertions). No real provider playback was
 performed by the automated suite.
-
-No real provider playback was performed by the automated suite.
 
 ---
 
@@ -81,6 +82,10 @@ No real provider playback was performed by the automated suite.
 | 18 | Client disconnect | Start a long TS stream, then close the browser tab or abort the request | Proxy closes upstream socket; no leak appears in `/health` `activeStreams`. |
 | 19 | Long-running live connection | Play a live TS channel for several minutes | First frames arrive immediately; connection stays healthy; no growing memory in the proxy process. |
 | 20 | Auth query parameters | Play a tokenized HLS playlist locally | Playlist and segment/key URLs retain query parameters after rewriting; tokens are not logged. |
+| 21 | Address fallback | Use a hostname with more than one public DNS record, where one address refuses connections | Detection succeeds on another validated address; failed attempt diagnostics show attempt number, family, and TCP duration without exposing IPs. |
+| 22 | VLC compatibility profile | Set `UPSTREAM_USER_AGENT_PROFILE=vlc`, restart, and detect a local mock | Upstream receives `VLC/3.0.21 LibVLC/3.0.21`; Range headers are still preserved. This is only a compatibility probe, not a universal fix. |
+| 23 | Continuous live stream | Play a TS channel that sends chunks for longer than 60 seconds | Stream stays connected; the idle timer resets on every chunk and no `STREAM_IDLE_TIMEOUT` occurs. |
+| 24 | Genuinely stalled stream | Use a mock that stops sending while holding the socket open | Stream closes after `IDLE_TIMEOUT_MS`; upstream socket is released. |
 
 ---
 

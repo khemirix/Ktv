@@ -1,5 +1,7 @@
 'use strict';
 
+const { config } = require('../config');
+
 var ALLOWED = [
   'content-type',
   'content-length',
@@ -12,6 +14,41 @@ var ALLOWED = [
   'age',
   'x-content-type-options'
 ];
+
+var USER_AGENT_PROFILES = {
+  default: 'KhemirixSmartProxy/1.3',
+  vlc: 'VLC/3.0.21 LibVLC/3.0.21'
+};
+
+function userAgentFor(options) {
+  options = options || {};
+  if (options.upstreamUserAgent) return String(options.upstreamUserAgent);
+  var profile = String(options.upstreamUserAgentProfile || 'default').toLowerCase();
+  return USER_AGENT_PROFILES[profile] || USER_AGENT_PROFILES.default;
+}
+
+function upstreamRequestHeaders(req, options) {
+  options = options || {};
+  var out = {
+    'User-Agent': userAgentFor(options),
+    Accept: String(options.upstreamAccept || '*/*'),
+    'Accept-Encoding': 'identity',
+    Connection: 'close'
+  };
+
+  // Only a small, explicitly configured set of headers is allowed upstream.
+  // Client cookies, authorization, and other browser headers are never copied.
+  if (options.upstreamAcceptLanguage) {
+    out['Accept-Language'] = String(options.upstreamAcceptLanguage);
+  }
+  if (options.upstreamReferer) {
+    out.Referer = String(options.upstreamReferer);
+  }
+
+  var range = req && req.headers ? req.headers.range : '';
+  if (range) out.Range = String(range);
+  return out;
+}
 
 function applyCors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -29,16 +66,9 @@ function applyCors(res) {
   ].join(', '));
 }
 
-function clientRequestHeaders(req) {
-  var out = {
-    'User-Agent': 'KhemirixSmartProxy/1.0',
-    Accept: '*/*',
-    'Accept-Encoding': 'identity',
-    Connection: 'close'
-  };
-  var range = req && req.headers ? req.headers.range : '';
-  if (range) out.Range = String(range);
-  return out;
+// Backward-compatible name used by the stream route.
+function clientRequestHeaders(req, options) {
+  return upstreamRequestHeaders(req, Object.assign({}, config, options || {}));
 }
 
 function copyUpstreamHeaders(upstream, res, overrides) {
@@ -61,6 +91,9 @@ function copyUpstreamHeaders(upstream, res, overrides) {
 module.exports = {
   applyCors,
   clientRequestHeaders,
+  upstreamRequestHeaders,
+  userAgentFor,
   copyUpstreamHeaders,
-  ALLOWED_RESPONSE_HEADERS: ALLOWED
+  ALLOWED_RESPONSE_HEADERS: ALLOWED,
+  USER_AGENT_PROFILES: USER_AGENT_PROFILES
 };

@@ -26,7 +26,8 @@ async function streamInfoHandler(ctx) {
       recommendedEngine: result.engine,
       appearsLive: result.appearsLive,
       confidence: result.confidence,
-      diagnostics: result.diagnostics
+      diagnostics: result.diagnostics,
+      connection: result.connection
     });
   } finally {
     abort.dispose();

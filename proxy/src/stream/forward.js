@@ -45,12 +45,14 @@ async function forwardStream(opened, req, res, options) {
       'X-Proxy-Via': 'smart-proxy'
     });
     res.end();
+    if (opened.idleGuard) opened.idleGuard.dispose();
     return;
   }
 
   var first = await readWithDecision(upstream, {
     maxPlaylistBytes: options.maxPlaylistBytes || config.maxPlaylistBytes,
-    classify: classifyBytes
+    classify: classifyBytes,
+    onChunk: opened.idleGuard && opened.idleGuard.touch
   });
   var sniffed = classifyBytes(first.bytes);
   var canRewrite = first.kind === 'playlist' &&
@@ -83,8 +85,13 @@ async function forwardStream(opened, req, res, options) {
   await writeChunks(res, first.chunks);
   if (first.ended || upstream.readableEnded) {
     res.end();
+    if (opened.idleGuard) opened.idleGuard.dispose();
     return;
   }
+
+  // pipeline() consumes the rest of the stream. The guard watches those chunks
+  // without changing flow mode, and removes the listener when the stream ends.
+  if (opened.idleGuard) opened.idleGuard.watchData();
   await pipeline(upstream, res);
 }
 
