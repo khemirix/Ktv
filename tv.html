@@ -211,12 +211,29 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.7/dist/hls.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js"></script>
+<script src="js/stream-detector.js"></script>
+<script src="js/live-player.js"></script>
+<script src="js/smart-proxy-client.js"></script>
 <script>
+  // Smart Proxy is disabled by default. Set one of these to activate it:
+  //   1) window.KTV_SMART_PROXY_URL below (e.g. https://your-proxy.onrender.com)
+  //   2) ?proxy=https://your-proxy.onrender.com in the address bar
+  //   3) localStorage.setItem('ktvSmartProxyUrl', 'https://your-proxy.onrender.com')
+  // Leaving all three empty restores the original direct/proxy detector flow.
+  window.KTV_SMART_PROXY_URL = window.KTV_SMART_PROXY_URL || '';
+  (function () {
+    var fromQuery = new URLSearchParams(location.search).get('proxy');
+    var fromStorage = '';
+    try { fromStorage = localStorage.getItem('ktvSmartProxyUrl') || ''; } catch (e) {}
+    window.KTV_SMART_PROXY_URL = fromQuery || fromStorage || window.KTV_SMART_PROXY_URL;
+  })();
+
   var PROXY = 'https://t-ahg3.onrender.com';
   var channels = [];
   var activeCategory = 'All';
   var currentPlayer = null;
   var playerModal = null;
+  var playGeneration = 0;
 
   window.addEventListener('DOMContentLoaded', function() {
     playerModal = new bootstrap.Modal(document.getElementById('tvPlayerModal'));
@@ -291,10 +308,7 @@
     var ch = JSON.parse(dataStr);
     document.getElementById('modalLogo').src = ch.logo;
     document.getElementById('modalName').textContent = ch.name;
-    setStatus('loading');
-    showLoader(true, 'Connecting to ' + ch.name + '...');
-    playerModal.show();
-    playStream(ch.stream);
+    playChannel(ch);
   }
 
   function setStatus(state) {
@@ -312,6 +326,7 @@
   }
 
   function stopStream() {
+    playGeneration += 1;
     if (currentPlayer) {
       try { currentPlayer.destroy(); } catch(e) {}
       currentPlayer = null;
@@ -321,95 +336,110 @@
     video.src = '';
   }
 
-  function playStream(streamUrl) {
-    var proxyUrl = PROXY + '/fetch?url=' + encodeURIComponent(streamUrl);
+  function applyDetected(detected, generation, video, ch) {
+    if (generation !== playGeneration) return;
+
+    (detected.warnings || []).forEach(function (warning) {
+      console.warn('[TV] ' + warning);
+    });
+
+    if (!detected.engine || detected.engine === 'unknown' || !detected.mediaUrl) {
+      setStatus('error');
+      showLoader(true, detected.message || 'This stream format is not supported.');
+      return;
+    }
+
+    showLoader(true, 'Starting ' + detected.format.toUpperCase() +
+      ' via ' + detected.via + '...');
+
+    currentPlayer = LivePlayer.play({
+      video: video,
+      engine: detected.engine,
+      format: detected.format,
+      url: detected.mediaUrl,
+      message: detected.message,
+      originalUrl: detected.originalUrl || ch.stream,
+      metadata: ch,
+      handlers: {
+        onStatus: function (message) {
+          if (generation === playGeneration) showLoader(true, message);
+        },
+        onBuffering: function (message) {
+          if (generation === playGeneration) showLoader(true, message);
+        },
+        onPlaying: function () {
+          if (generation !== playGeneration) return;
+          setStatus('playing');
+          showLoader(false);
+        },
+        onError: function (message) {
+          if (generation !== playGeneration) return;
+          setStatus('error');
+          showLoader(true, message);
+        },
+        onAutoplayBlocked: function () {
+          if (generation !== playGeneration) return;
+          showLoader(true, 'Autoplay was blocked. Press play to start the stream.');
+        }
+      }
+    });
+  }
+
+  function detectDirectly(ch, generation, video, warnings) {
+    StreamDetector.detect(ch.stream, {
+      proxy: PROXY,
+      video: video,
+      metadata: ch,
+      allowMetadataFallback: true
+    }).then(function (detected) {
+      if (generation !== playGeneration) return;
+      detected.warnings = (warnings || []).concat(detected.warnings || []);
+      applyDetected(detected, generation, video, ch);
+    }).catch(function (err) {
+      if (generation !== playGeneration) return;
+      setStatus('error');
+      showLoader(true, (err && err.message) || 'Could not connect to this stream.');
+    });
+  }
+
+  function playChannel(ch) {
+    stopStream();
+    var generation = playGeneration;
     var video = document.getElementById('tvVideo');
 
-    stopStream();
+    playerModal.show();
+    setStatus('loading');
 
-    video.onplaying = function() { setStatus('playing'); showLoader(false); };
-    video.onwaiting = function() { showLoader(true, 'Buffering...'); };
-    video.onerror = function() { setStatus('error'); showLoader(true, 'Stream error. Try another channel.'); };
+    var smartBase = window.SmartProxyClient
+      ? SmartProxyClient.normalizeBase(window.KTV_SMART_PROXY_URL) : '';
 
-    var isTS = streamUrl.indexOf('.ts') !== -1;
-    var isM3U8 = streamUrl.indexOf('.m3u8') !== -1;
-
-    if (isTS && mpegts.isSupported()) {
-      // Raw MPEG-TS stream — use mpegts.js with pre-buffer
-      currentPlayer = mpegts.createPlayer({
-        type: 'mpegts',
-        isLive: true,
-        url: proxyUrl
-      }, {
-        enableWorker: true,
-        lazyLoad: false,
-        autoCleanupSourceBuffer: true,
-        liveBufferLatencyChasing: false,
-        liveSync: false,
-        liveSyncMaxLatency: 60,
-        liveSyncTargetLatency: 30,
-        stashInitialSize: 1024 * 1024
-      });
-      currentPlayer.attachMediaElement(video);
-      currentPlayer.load();
-
-      var prebuffered = false;
-      video.addEventListener('progress', function checkBuffer() {
-        if (prebuffered) return;
-        if (video.buffered.length > 0) {
-          var bufferedEnd = video.buffered.end(video.buffered.length - 1);
-          var bufferedAmount = bufferedEnd - video.currentTime;
-          showLoader(true, 'Buffering... ' + Math.min(30, Math.floor(bufferedAmount)) + 's / 30s');
-          if (bufferedAmount >= 30) {
-            prebuffered = true;
-            video.play().catch(function() {});
-            video.removeEventListener('progress', checkBuffer);
-          }
+    if (smartBase && SmartProxyClient.isEnabled(smartBase)) {
+      showLoader(true, 'Detecting ' + ch.name + ' via Smart Proxy...');
+      SmartProxyClient.detect(ch.stream, {
+        baseUrl: smartBase,
+        metadata: ch,
+        timeoutMs: 12000
+      }).then(function (detected) {
+        if (generation !== playGeneration) return;
+        if (!detected || !detected.mediaUrl || !detected.engine ||
+            detected.engine === 'unknown') {
+          throw new Error((detected && detected.message) ||
+            'Smart Proxy returned no playable stream.');
         }
+        applyDetected(detected, generation, video, ch);
+      }).catch(function (err) {
+        if (generation !== playGeneration) return;
+        var reason = (err && err.message) || 'Smart Proxy unavailable.';
+        console.warn('[TV] Smart Proxy unavailable: ' + reason);
+        showLoader(true, 'Smart Proxy unavailable, trying direct detection...');
+        detectDirectly(ch, generation, video,
+          ['Smart Proxy unavailable: ' + reason]);
       });
-
-    } else if (isM3U8 && Hls.isSupported()) {
-      // HLS stream — use hls.js
-      currentPlayer = new Hls({ enableWorker: true, lowLatencyMode: true });
-      currentPlayer.loadSource(proxyUrl);
-      currentPlayer.attachMedia(video);
-      currentPlayer.on(Hls.Events.MANIFEST_PARSED, function() {
-        video.play().catch(function() {});
-      });
-      currentPlayer.on(Hls.Events.ERROR, function(e, data) {
-        if (data.fatal) {
-          setStatus('error');
-          showLoader(true, 'Stream error.');
-        }
-      });
-
-    } else {
-      // Unknown or no extension — try mpegts.js first, fallback to hls.js
-      if (mpegts.isSupported()) {
-        currentPlayer = mpegts.createPlayer({
-          type: 'mpegts',
-          isLive: true,
-          url: proxyUrl
-        }, {
-          enableWorker: true,
-          liveBufferLatencyChasing: true,
-          liveSync: true
-        });
-        currentPlayer.attachMediaElement(video);
-        currentPlayer.load();
-        currentPlayer.play().catch(function() {});
-      } else if (Hls.isSupported()) {
-        currentPlayer = new Hls({ enableWorker: true, lowLatencyMode: true });
-        currentPlayer.loadSource(proxyUrl);
-        currentPlayer.attachMedia(video);
-        currentPlayer.on(Hls.Events.MANIFEST_PARSED, function() {
-          video.play().catch(function() {});
-        });
-      } else {
-        video.src = proxyUrl;
-        video.play().catch(function() {});
-      }
+      return;
     }
+
+    showLoader(true, 'Detecting ' + ch.name + ' stream format...');
+    detectDirectly(ch, generation, video, []);
   }
 </script>
 </body>

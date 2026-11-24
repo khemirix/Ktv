@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: khemirix-smart-proxy
+    env: node
+    plan: free
+    rootDir: proxy
+    buildCommand: npm install --omit=dev
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: SMART_PROXY_PUBLIC_BASE_URL
+        sync: false
+      - key: VERSION
+        value: 1.0.0
+      - key: PROCESSING_ENGINE
+        value: direct
+      - key: MAX_CONCURRENT_STREAMS
+        value: "100"
+      - key: RATE_LIMIT_MAX
+        value: "120"
