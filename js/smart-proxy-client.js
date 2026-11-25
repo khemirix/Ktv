@@ -38,6 +38,22 @@
     return value.trim().replace(/\/+$/, '');
   }
 
+  // Some deployments return a playbackUrl built from a stale public base URL.
+  // Rebase only the origin onto the configured proxy; path and query stay intact.
+  function rebaseToProxy(value, base) {
+    if (typeof value !== 'string' || !base) return value;
+    try {
+      var parsed = new URL(value);
+      var proxy = new URL(base);
+      if (parsed.origin === proxy.origin) return value;
+      parsed.protocol = proxy.protocol;
+      parsed.host = proxy.host;
+      return parsed.href;
+    } catch (e) {
+      return value;
+    }
+  }
+
   function isEnabled(base) {
     return !!normalizeBase(base || (global && global.KTV_SMART_PROXY_URL));
   }
@@ -137,7 +153,7 @@
 
         return {
           originalUrl: url,
-          mediaUrl: body.playbackUrl,
+          mediaUrl: rebaseToProxy(body.playbackUrl, base),
           format: body.format,
           engine: body.engine,
           via: 'smart-proxy',

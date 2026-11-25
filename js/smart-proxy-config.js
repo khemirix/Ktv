@@ -1,9 +1,11 @@
 /* Central configuration for the Live TV Smart Proxy.
  *
- * This is the ONLY file that contains the deployed proxy URL.
- * Replace DEFAULT_PROXY_URL here when the backend moves.
+ * This is the ONLY file that contains proxy endpoint URLs.
+ * Replace DEFAULT_PROXY_URL / FALLBACK_PROXY_URL here when backends move.
  *
  * Runtime overrides (no code edit needed):
+ *   tv.html?proxy=snapdeploy  -> active SnapDeploy endpoint (default)
+ *   tv.html?proxy=render      -> preserved Render fallback endpoint
  *   tv.html?proxy=https://another-proxy.example
  *   localStorage.setItem('ktvSmartProxyUrl', 'https://another-proxy.example')
  *   tv.html?proxy=off  (or localStorage value "off") disables the proxy.
@@ -11,12 +13,16 @@
 (function (global) {
   'use strict';
 
-  var DEFAULT_PROXY_URL = 'https://ktv-edmu.onrender.com';
+  // SnapDeploy is active for current testing; Render remains available.
+  var DEFAULT_PROXY_URL = 'https://ktv-86d0f.containers.snapdeploy.app';
+  var FALLBACK_PROXY_URL = 'https://ktv-edmu.onrender.com';
 
   function clean(value) {
     if (typeof value !== 'string') return '';
     var trimmed = value.trim();
     if (/^(off|0|false|none|disabled)$/i.test(trimmed)) return '';
+    if (/^snapdeploy$/i.test(trimmed)) return DEFAULT_PROXY_URL;
+    if (/^render$/i.test(trimmed)) return FALLBACK_PROXY_URL;
     return trimmed.replace(/\/+$/, '');
   }
 
@@ -38,6 +44,7 @@
 
   var selected = resolve();
   global.KTV_SMART_PROXY_DEFAULT = DEFAULT_PROXY_URL;
+  global.KTV_SMART_PROXY_FALLBACK = FALLBACK_PROXY_URL;
   global.KTV_SMART_PROXY_SOURCE = selected.source;
   global.KTV_SMART_PROXY_URL = selected.url;
 })(window);
