@@ -19,7 +19,6 @@ function publicBaseFromRequest(req, config) {
   var host = headers['x-forwarded-host'] || headers.host || 'localhost:10000';
   var hostString = String(host).split(',')[0].trim();
   var proto = protoHeader ? String(protoHeader).split(',')[0].trim() : 'http';
-  if (!protoHeader && /onrender\.com/.test(hostString)) proto = 'https';
   return proto + '://' + hostString;
 }
 

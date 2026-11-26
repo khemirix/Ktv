@@ -38,7 +38,6 @@ that was checked.
 
 ```text
 Ktv/
-├── render.yaml              Render Blueprint (rootDir: proxy)
 ├── tv.html                  Live TV page — only file changed in the frontend
 ├── js/
 │   ├── smart-proxy-client.js  NEW: thin API client, no backend code
@@ -92,8 +91,8 @@ npm run dev
 ```
 
 `.env` is loaded locally by `src/config/env-file.js`. Real environment variables
-always take precedence. On Render, set environment variables in the dashboard;
-no `.env` file is needed.
+always take precedence. Set environment variables in your hosting platform's
+dashboard; no `.env` file is needed.
 
 ---
 
@@ -101,10 +100,10 @@ no `.env` file is needed.
 
 | Variable | Default | Purpose |
 |---|---:|---|
-| `PORT` | `10000` | Listen port. Render supplies this automatically. |
+| `PORT` | `10000` | Listen port. The hosting platform may supply this automatically. |
 | `HOST` | `0.0.0.0` | Listen address. |
 | `VERSION` | `1.4.0` | Reported by `/health`. |
-| `SMART_PROXY_PUBLIC_BASE_URL` | derived from request | Public base URL used when rewriting HLS playlist references. Set this on Render. |
+| `SMART_PROXY_PUBLIC_BASE_URL` | derived from request | Public base URL used when rewriting HLS playlist references. Set this on your hosting platform. |
 | `MAX_URL_LENGTH` | `4096` | Rejects overly long stream URLs. |
 | `DNS_TIMEOUT_MS` | `4000` | Timeout for each DNS lookup attempt. |
 | `DNS_RETRIES` | `2` | Extra DNS attempts after a temporary failure. |
@@ -177,7 +176,7 @@ Lightweight detection. Reads at most `DETECT_MAX_BYTES`, then aborts the probe.
   "status": 200,
   "rangeSupported": false,
   "playlist": null,
-  "playbackUrl": "https://proxy.example.onrender.com/api/stream?url=..."
+  "playbackUrl": "https://proxy.example/api/stream?url=..."
 }
 ```
 
@@ -216,7 +215,7 @@ Hidden by default. Requires both:
 
 ```text
 ALLOW_TCP_DIAGNOSTICS=true
-DIAGNOSTICS_TOKEN=<a secret you choose on Render>
+DIAGNOSTICS_TOKEN=<a secret you choose on your hosting platform>
 ```
 
 Request:
@@ -336,20 +335,14 @@ configuration, not in the proxy.
 
 ---
 
-## 10. Render deployment
+## 10. Deployment
 
-The root `render.yaml` is a Blueprint with `rootDir: proxy`, start command
-`npm start`, and health path `/health`.
+Deploy the Node.js backend with any HTTPS hosting platform that can run
+`npm start` from the `proxy` directory.
 
-1. Push this branch to GitHub.
-2. In Render, create a new **Blueprint** from the repository, or create a
-   **Web Service** manually with:
-   - Root Directory: `proxy`
-   - Build Command: `npm install --omit=dev`
-   - Start Command: `npm start`
-   - Health Check Path: `/health`
-3. Set `SMART_PROXY_PUBLIC_BASE_URL` to the Render service URL, for example
-   `https://khemirix-smart-proxy.onrender.com` (no real credentials).
+1. Set Root Directory to `proxy`.
+2. Use Build Command `npm install --omit=dev` and Start Command `npm start`.
+3. Set `SMART_PROXY_PUBLIC_BASE_URL` to the public HTTPS URL of the service.
 4. Confirm `https://<service>/health` returns `status: ok`.
 
 GitHub Pages remains the website host; it cannot run this Node.js backend.
@@ -364,18 +357,21 @@ Website and proxy are deployed independently.
 - `js/smart-proxy-config.js` — the single source of truth for the proxy URL.
 - `js/smart-proxy-client.js` — the API client; it contains no proxy URL.
 
-Change `DEFAULT_PROXY_URL` in `js/smart-proxy-config.js` when the backend moves.
+The primary is Vercel (`https://ktv-nu.vercel.app`) and the automatic fallback is
+SnapDeploy (`https://ktv-86d0f.containers.snapdeploy.app`). SnapDeploy is never
+the default. Old `localStorage.ktvSmartProxyUrl` values are ignored so a saved
+SnapDeploy or other saved URL cannot silently replace Vercel.
+
 Runtime overrides without editing code:
 
 ```text
+https://khemirix.github.io/Ktv/tv.html?proxy=vercel
+https://khemirix.github.io/Ktv/tv.html?proxy=snapdeploy
 https://khemirix.github.io/Ktv/tv.html?proxy=https://another-proxy.example
+https://khemirix.github.io/Ktv/tv.html?proxy=off
 ```
 
-```js
-localStorage.setItem('ktvSmartProxyUrl', 'https://another-proxy.example');
-```
-
-Use `?proxy=off` (or store `off`) to disable the proxy temporarily.
+Only an explicit `?proxy=...` URL selects a custom proxy.
 
 Playback routing:
 
@@ -387,7 +383,12 @@ Playback routing:
 3. If `?proxy=off` is used and the channel is HTTP on an HTTPS page, a clear
    error is shown instead of a Mixed Content request.
 4. Proxy detection uses `/api/detect` with a 30-second timeout and one retry
-   for temporary DNS/timeout/unreachable errors.
+   for temporary DNS/timeout/unreachable errors. The real `/api/stream`
+   endpoint is then checked with a HEAD request before playback starts.
+5. Vercel is always tried first. Connection failures, timeouts, wake pages,
+   invalid responses, and 5xx errors automatically retry the same stream on
+   SnapDeploy. A valid Vercel stream never contacts SnapDeploy. Explicit
+   `?proxy=snapdeploy` and custom URLs do not fail over.
 5. The returned `playbackUrl` and engine are passed to the existing
    `LivePlayer`. Original channel data remains available as `originalUrl` and
    `metadata`.
@@ -399,10 +400,9 @@ Playback routing:
 8. Playback errors are mapped to readable messages such as DNS failure,
    timeout, unreachable host, blocked address, and upstream HTTP error.
 
-To restore the old all-direct behavior, use `?proxy=off` or clear
-`localStorage.ktvSmartProxyUrl` and set `DEFAULT_PROXY_URL` to an empty string.
-HTTP channels on the HTTPS site will still be blocked with an explanatory
-message because that was never a valid browser request.
+To restore all-direct behavior, use `?proxy=off`. HTTP channels on the HTTPS
+site will still be blocked with an explanatory message because that was never a
+valid browser request.
 
 ---
 
@@ -433,10 +433,10 @@ See `proxy/TESTING.md` for the manual test guide and real-provider cautions.
 
 | Symptom | Check |
 |---|---|
-| `/health` fails | Service build/start logs; `PORT` from Render. |
+| `/health` fails | Service build/start logs; check `PORT` from the hosting platform. |
 | Detection says `unknown` | Provider returned no bytes/headers in time; raise `DETECT_MAX_BYTES` or `HEADERS_TIMEOUT_MS`. |
 | HLS segments 404 | Confirm `SMART_PROXY_PUBLIC_BASE_URL`; check playlist rewrite in browser Network tab. |
-| TS starts slowly | Confirm `/api/stream` is used and no old `t-ahg3.onrender.com/fetch` URL remains. |
+| TS starts slowly | Confirm `/api/stream` is used and no legacy `/fetch` URL remains. |
 | 403 `BLOCKED_ADDRESS` | Provider host resolved to private/metadata range; expected security behavior. |
 | 504 `UPSTREAM_TIMEOUT` | Provider did not respond within header timeout. |
 | 503 `TOO_MANY_STREAMS` | Lower channel switching frequency or raise `MAX_CONCURRENT_STREAMS`. |

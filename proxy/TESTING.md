@@ -98,7 +98,7 @@ performed by the automated suite.
 
 ## Temporary TCP diagnostics
 
-On Render, set exactly:
+On your proxy deployment, set exactly:
 
 ```text
 ALLOW_TCP_DIAGNOSTICS=true
@@ -110,7 +110,7 @@ Then request:
 
 ```bash
 curl -sS -H 'DIAGNOSTICS_TOKEN: <secret>' \
-  'https://ktv-edmu.onrender.com/api/diag/tcp?host=<provider-hostname>&port=<port>'
+  'https://<proxy-base>/api/diag/tcp?host=<provider-hostname>&port=<port>'
 ```
 
 Send only the hostname and numeric port. Do **not** send a full stream URL,

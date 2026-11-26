@@ -229,6 +229,15 @@
       ? SmartProxyClient.normalizeBase(window.KTV_SMART_PROXY_URL) : '';
   }
 
+  function proxyFallback() {
+    if (!window.SmartProxyClient || !window.KTV_SMART_PROXY_FALLBACK) return '';
+    return SmartProxyClient.normalizeBase(window.KTV_SMART_PROXY_FALLBACK);
+  }
+
+  function proxyFailoverAllowed() {
+    return !!proxyFallback() && window.KTV_SMART_PROXY_FAILOVER_ALLOWED === true;
+  }
+
   function isHttpStream(url) {
     return /^http:\/\//i.test(String(url || ''));
   }
@@ -348,8 +357,9 @@
     video.src = '';
   }
 
-  function applyDetected(detected, generation, video, ch) {
+  function applyDetected(detected, generation, video, ch, state) {
     if (generation !== playGeneration) return;
+    state = state || { allowed: false, used: false };
 
     (detected.warnings || []).forEach(function (warning) {
       console.warn('[TV] ' + warning);
@@ -384,8 +394,23 @@
           setStatus('playing');
           showLoader(false);
         },
-        onError: function (message) {
+        onError: function (message, fatal, info) {
           if (generation !== playGeneration) return;
+          var proxyFailure = info && (
+            (info.category === 'http-proxy' && Number(info.httpStatus) >= 500) ||
+            info.category === 'network' || info.category === 'hls'
+          );
+          if (fatal === true && proxyFailure && state.allowed && !state.used &&
+              detected.baseUrl === proxyBase()) {
+            state.used = true;
+            console.warn('[TV] Primary proxy playback failed; retrying via backup proxy.');
+            setStatus('loading');
+            showLoader(true, 'Primary proxy failed. Retrying via backup proxy...');
+            playViaSmartProxy(ch, generation, video,
+              (detected.warnings || []).concat([message]),
+              { allowed: false, used: true, forceFallback: true });
+            return;
+          }
           setStatus('error');
           showLoader(true, message);
         },
@@ -404,21 +429,27 @@
     return activeDetectionController;
   }
 
-  function playViaSmartProxy(ch, generation, video, warnings) {
-    var base = proxyBase();
+  function playViaSmartProxy(ch, generation, video, warnings, state) {
+    state = state || { allowed: proxyFailoverAllowed(), used: false };
+    var forceFallback = state.forceFallback === true;
+    var base = forceFallback ? proxyFallback() : proxyBase();
     if (!base) {
       showStreamError(new Error(streamRequiresProxy(ch)
         ? 'This HTTP stream cannot be played from the HTTPS page. Smart Proxy is disabled.'
         : 'Smart Proxy is unavailable.'));
       return;
     }
+    var allowFallback = state.allowed === true && !forceFallback;
 
     var controller = ensureDetectionController();
-    showLoader(true, 'Detecting ' + ch.name + ' via Smart Proxy ' +
-      '(waking server if needed)...');
+    showLoader(true, 'Detecting ' + ch.name + ' via ' +
+      (forceFallback ? 'backup Smart Proxy' : 'Smart Proxy') +
+      ' (waking server if needed)...');
 
     SmartProxyClient.detect(ch.stream, {
       baseUrl: base,
+      fallbackBaseUrl: allowFallback ? proxyFallback() : '',
+      allowFallback: allowFallback,
       metadata: ch,
       timeoutMs: 30000,
       retries: 1,
@@ -431,21 +462,23 @@
         throw new Error((detected && detected.message) ||
           'Smart Proxy returned no playable stream.');
       }
+      detected.baseUrl = detected.baseUrl || base;
       detected.warnings = (warnings || []).concat(detected.warnings || []);
-      applyDetected(detected, generation, video, ch);
+      applyDetected(detected, generation, video, ch, state);
     }).catch(function (err) {
       if (generation !== playGeneration) return;
       activeDetectionController = null;
-      console.warn('[TV] Smart Proxy failed: ' + ((err && err.message) || 'unknown error'));
-      showStreamError(err);
+      var message = (err && err.message) || 'unknown error';
+      console.warn('[TV] Smart Proxy failed: ' + message);
+      showStreamError(new Error(forceFallback ? 'Backup proxy failed. ' + message : message));
     });
   }
 
   // HTTPS pages try direct playback first. They never fetch an HTTP stream
   // directly; that case is routed to Smart Proxy before any request is made.
-  function detectDirectly(ch, generation, video, warnings) {
+  function detectDirectly(ch, generation, video, warnings, state) {
     if (streamRequiresProxy(ch)) {
-      playViaSmartProxy(ch, generation, video, warnings);
+      playViaSmartProxy(ch, generation, video, warnings, state);
       return;
     }
 
@@ -469,22 +502,22 @@
           var reason = (detected && detected.message) || 'Direct playback was inconclusive.';
           showLoader(true, reason + ' Trying Smart Proxy...');
           playViaSmartProxy(ch, generation, video,
-            (warnings || []).concat([reason]));
+            (warnings || []).concat([reason]), state);
           return;
         }
-        applyDetected(detected, generation, video, ch);
+        applyDetected(detected, generation, video, ch, state);
         return;
       }
 
       detected.warnings = (warnings || []).concat(detected.warnings || []);
-      applyDetected(detected, generation, video, ch);
+      applyDetected(detected, generation, video, ch, state);
     }).catch(function (err) {
       if (generation !== playGeneration) return;
       activeDetectionController = null;
       if (proxyBase()) {
         var reason = (err && err.message) || 'Direct detection failed.';
         showLoader(true, reason + ' Trying Smart Proxy...');
-        playViaSmartProxy(ch, generation, video, (warnings || []).concat([reason]));
+        playViaSmartProxy(ch, generation, video, (warnings || []).concat([reason]), state);
         return;
       }
       showStreamError(err);
@@ -496,18 +529,23 @@
     var generation = playGeneration;
     var video = document.getElementById('tvVideo');
     ensureDetectionController();
+    var failoverState = {
+      allowed: proxyFailoverAllowed(),
+      used: false,
+      forceFallback: false
+    };
 
     playerModal.show();
     setStatus('loading');
 
     if (streamRequiresProxy(ch)) {
       showLoader(true, 'This HTTP stream must use Smart Proxy on an HTTPS page...');
-      playViaSmartProxy(ch, generation, video, []);
+      playViaSmartProxy(ch, generation, video, [], failoverState);
       return;
     }
 
     showLoader(true, 'Detecting ' + ch.name + ' stream format...');
-    detectDirectly(ch, generation, video, []);
+    detectDirectly(ch, generation, video, [], failoverState);
   }
 </script>
 </body>

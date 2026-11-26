@@ -107,8 +107,9 @@ function mpegtsStub() {
   return {
     mpegts,
     calls,
-    emit(name, event, data) {
-      (handlers[name] || []).slice().forEach(fn => fn(event, data));
+    emit(name, event, errorType, errorDetail, errorInfo) {
+      (handlers[name] || []).slice().forEach(fn =>
+        fn(event, errorType, errorDetail, errorInfo));
     }
   };
 }
@@ -119,7 +120,7 @@ function handlersStub() {
     calls,
     onPlaying(arg) { calls.push(['playing', arg]); },
     onBuffering(msg) { calls.push(['buffering', msg]); },
-    onError(msg, fatal) { calls.push(['error', msg, fatal]); },
+    onError(msg, fatal, info) { calls.push(['error', msg, fatal, info]); },
     onStatus(msg) { calls.push(['status', msg]); },
     onAutoplayBlocked() { calls.push(['autoplay']); }
   };
@@ -311,21 +312,75 @@ async function run() {
       'HLS fatal error includes label and detail');
   }
 
-  // 7. MPEG-TS errors are readable.
+  // 7. MPEG-TS errors show real details with safe console logging.
+  {
+    const video = videoStub();
+    const ts = mpegtsStub();
+    const handlers = handlersStub();
+    const logs = [];
+    const originalConsoleError = console.error;
+    console.error = (...args) => logs.push(args);
+    try {
+      LivePlayer.play({
+        video, mpegts: ts.mpegts, engine: 'mpegts.js', format: 'mpegts',
+        url: 'http://example.test/live?token=SUPERSECRET&user=alice', handlers
+      });
+      const circular = { msg: 'bad ts packet' };
+      circular.self = circular;
+      ts.emit('error', 'error', 'MediaError', 'FormatError', { code: -1, msg: circular });
+
+      ok(has(handlers.calls, 'error', 'MPEG-TS parse error'), 'demux failure is labelled as MPEG-TS parse error');
+      ok(has(handlers.calls, 'error', 'FormatError'), 'real error detail is shown');
+      ok(!has(handlers.calls, 'error', '[object Object]'), 'object errors are not printed as [object Object]');
+      ok(!has(handlers.calls, 'error', 'SUPERSECRET'), 'stream token is not exposed in the error');
+      ok(!has(handlers.calls, 'error', 'alice'), 'stream username is not exposed in the error');
+      const errorCall = handlers.calls.find(call => call[0] === 'error');
+      ok(errorCall[3] && errorCall[3].category === 'mpegts-parse',
+        'onError receives a structured category for playback failover');
+      ok(errorCall[3].httpStatus === 0, 'onError has no invented HTTP status');
+
+      const log = logs.find(entry => String(entry[0]).indexOf('[LiveTV][MPEG-TS] error') !== -1);
+      ok(!!log, 'structured MPEG-TS console log is written');
+      ok(log[1].errorType === 'MediaError', 'console log includes error type');
+      ok(log[1].errorDetails === 'FormatError', 'console log includes error details');
+      ok(log[1].httpStatus === null, 'no HTTP status is invented for parse errors');
+      ok(log[1].errorInfo.indexOf('[Circular]') !== -1, 'circular error info is safe to serialize');
+      ok(log[1].streamUrl.indexOf('SUPERSECRET') === -1 &&
+         log[1].streamUrl.indexOf('alice') === -1, 'console stream URL is redacted');
+    } finally {
+      console.error = originalConsoleError;
+    }
+  }
+
+  // 8. Decode/parse/HTTP errors are distinct; only recoverable ones reconnect.
   {
     const video = videoStub();
     const ts = mpegtsStub();
     const handlers = handlersStub();
     LivePlayer.play({
       video, mpegts: ts.mpegts, engine: 'mpegts.js', format: 'mpegts',
-      url: 'http://example.test/live', handlers
+      url: 'http://example.test/live', handlers, reconnectDelayMs: 1
     });
-    ts.emit('error', 'error', { details: 'demux error' });
-    ok(has(handlers.calls, 'error', 'MPEG-TS playback failed: demux error'),
-      'MPEG-TS error includes engine label and detail');
+    ts.emit('error', 'error', 'MediaError', 'MediaMSEError', { code: 9, msg: 'SourceBuffer append failed' });
+    ok(has(handlers.calls, 'error', 'video decode error'), 'MSE failure is labelled as video decode error');
+    ok(ts.calls.loadCalls === 1, 'decode error does not trigger reconnect');
   }
-
-  // 8. A sleeping proxy's HTTP 503 is retried, not treated as a dead stream.
+  {
+    const video = videoStub();
+    const ts = mpegtsStub();
+    const handlers = handlersStub();
+    LivePlayer.play({
+      video, mpegts: ts.mpegts, engine: 'mpegts.js', format: 'mpegts',
+      url: 'http://example.test/live', handlers, reconnectDelayMs: 1
+    });
+    ts.emit('error', 'error', 'NetworkError', 'HttpStatusCodeInvalid', { code: 403, msg: 'Forbidden' });
+    ok(has(handlers.calls, 'error', 'HTTP proxy error'), 'HTTP errors are labelled as proxy errors');
+    ok(has(handlers.calls, 'error', '[HTTP 403]'), 'HTTP status is shown');
+    const httpCall = handlers.calls.find(call => call[0] === 'error');
+    ok(httpCall[3].category === 'http-proxy' && httpCall[3].httpStatus === 403,
+      'onError exposes HTTP proxy status for failover decisions');
+    ok(ts.calls.loadCalls === 1, 'non-recoverable HTTP 403 does not reconnect');
+  }
   {
     const video = videoStub();
     const ts = mpegtsStub();
@@ -334,14 +389,31 @@ async function run() {
       video, mpegts: ts.mpegts, engine: 'mpegts.js', format: 'mpegts',
       url: 'http://example.test/live/waking', handlers, reconnectDelayMs: 1
     });
-    ts.emit('error', 'error', { details: 'HttpStatusCodeInvalid', code: 503 });
+    ts.emit('error', 'error', 'NetworkError', 'HttpStatusCodeInvalid',
+      { code: 503, msg: 'Service Unavailable' });
     await tick();
     ok(ts.calls.loadCalls === 2, 'MPEG-TS retries once after a proxy 503');
-    ok(has(handlers.calls, 'status', 'waking up'), 'proxy wake retry is reported to the user');
-    ts.emit('error', 'error', { details: 'HttpStatusCodeInvalid', code: 503 });
+    ok(has(handlers.calls, 'status', 'HTTP 503'), 'proxy wake retry is reported to the user');
+    ts.emit('error', 'error', 'NetworkError', 'HttpStatusCodeInvalid',
+      { code: 503, msg: 'Service Unavailable' });
     await tick();
-    ts.emit('error', 'error', { details: 'HttpStatusCodeInvalid', code: 503 });
+    ts.emit('error', 'error', 'NetworkError', 'HttpStatusCodeInvalid',
+      { code: 503, msg: 'Service Unavailable' });
     ok(has(handlers.calls, 'error', 'HTTP 503'), 'persistent HTTP 503 eventually fails clearly');
+  }
+  {
+    const video = videoStub();
+    const ts = mpegtsStub();
+    const handlers = handlersStub();
+    LivePlayer.play({
+      video, mpegts: ts.mpegts, engine: 'mpegts.js', format: 'mpegts',
+      url: 'http://example.test/live', handlers, reconnectDelayMs: 1
+    });
+    ts.emit('error', 'error', 'NetworkError', 'ConnectingTimeout', { code: -1, msg: 'timeout' });
+    await tick();
+    ok(ts.calls.loadCalls === 2, 'network timeout is treated as recoverable');
+    ok(has(handlers.calls, 'error', 'network error') === false,
+      'recoverable network error is reported as status, not fatal error');
   }
 
   // 9. A ready native element starts immediately; explicit prebuffer:false is honoured.

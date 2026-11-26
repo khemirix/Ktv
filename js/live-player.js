@@ -59,6 +59,127 @@
     return String(value === null || value === undefined ? '' : value);
   }
 
+  // Error payloads from mpegts.js are a mix of strings and plain objects.
+  // String(object) produces "[object Object]", so objects are formatted with
+  // JSON instead. Circular references are replaced with "[Circular]".
+  function normalizeForJson(value, seen) {
+    if (value === null || typeof value !== 'object') return value;
+    if (value instanceof Error) {
+      return { name: value.name, message: value.message, code: value.code };
+    }
+    if (seen && seen.has(value)) return '[Circular]';
+    if (seen) seen.add(value);
+    var out = Array.isArray(value) ? [] : {};
+    for (var key in value) {
+      if (Object.prototype.hasOwnProperty.call(value, key)) {
+        out[key] = normalizeForJson(value[key], seen);
+      }
+    }
+    if (seen) seen.delete(value);
+    return out;
+  }
+
+  function safeJson(value) {
+    try {
+      var seen = typeof WeakSet === 'function' ? new WeakSet() : null;
+      return JSON.stringify(normalizeForJson(value, seen));
+    } catch (e) {
+      return '[unserializable error information]';
+    }
+  }
+
+  function printable(value) {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (value instanceof Error) {
+      var message = (value.name ? value.name + ': ' : '') + (value.message || '');
+      if (value.code !== undefined) message += ' (code ' + printable(value.code) + ')';
+      return message || safeJson(value);
+    }
+    return safeJson(value);
+  }
+
+  function httpStatusOf(value) {
+    var status = Number(value);
+    return isFinite(status) && status >= 100 && status < 600 ? status : 0;
+  }
+
+  function sanitizeStreamUrl(raw) {
+    if (typeof raw !== 'string' || !raw) return '';
+    try {
+      var parsed = new URL(raw);
+      if (parsed.username || parsed.password) {
+        parsed.username = '[redacted]';
+        parsed.password = '[redacted]';
+      }
+      Array.from(parsed.searchParams.keys()).forEach(function (key) {
+        parsed.searchParams.set(key, '[redacted]');
+      });
+      if (parsed.hash) parsed.hash = '[redacted]';
+      return parsed.href;
+    } catch (e) {
+      return String(raw)
+        .replace(/\/\/[^/@\s]+:[^/@\s]+@/, '//[redacted]:[redacted]@')
+        .replace(/([?&][^=&#]+=)[^&#]*/g, '$1[redacted]')
+        .replace(/#.*$/, '#[redacted]');
+    }
+  }
+
+  function errorInfoSummary(info) {
+    if (info === null || info === undefined) return '';
+    if (typeof info !== 'object') return printable(info);
+    var parts = [];
+    if (info.code !== undefined) parts.push('code ' + printable(info.code));
+    if (info.status !== undefined) parts.push('status ' + printable(info.status));
+    if (info.msg !== undefined || info.message !== undefined) {
+      parts.push(printable(info.msg !== undefined ? info.msg : info.message));
+    }
+    return parts.join(', ') || safeJson(info);
+  }
+
+  function classifyMpegtsError(errorType, errorDetail, httpStatus) {
+    var type = printable(errorType).toLowerCase();
+    var detail = printable(errorDetail).toLowerCase();
+    if (httpStatus || detail.indexOf('httpstatuscodeinvalid') !== -1 || detail.indexOf('http') !== -1) {
+      return { key: 'http-proxy', label: 'HTTP proxy error' };
+    }
+    if (detail.indexOf('format') !== -1 || detail.indexOf('demux') !== -1 ||
+        detail.indexOf('mpeg-ts') !== -1 || detail.indexOf('mpegts') !== -1) {
+      return { key: 'mpegts-parse', label: 'MPEG-TS parse error' };
+    }
+    if (type === 'mediaerror' || detail.indexOf('mse') !== -1 ||
+        detail.indexOf('decode') !== -1 || detail.indexOf('codec') !== -1 ||
+        detail.indexOf('sourcebuffer') !== -1) {
+      return { key: 'decode', label: 'video decode error' };
+    }
+    if (type === 'networkerror' || detail.indexOf('timeout') !== -1 ||
+        detail.indexOf('earlyeof') !== -1 || detail.indexOf('exception') !== -1 ||
+        detail.indexOf('network') !== -1) {
+      return { key: 'network', label: 'network error' };
+    }
+    return { key: 'other', label: 'MPEG-TS error' };
+  }
+
+  function isRecoverableMpegtsError(category, errorDetail, httpStatus) {
+    if (httpStatus === 503 || httpStatus === 502 || httpStatus === 504) return true;
+    var detail = printable(errorDetail).toLowerCase();
+    return category.key === 'network' &&
+      (detail.indexOf('timeout') !== -1 || detail.indexOf('earlyeof') !== -1);
+  }
+
+  function logMpegtsError(fields) {
+    if (typeof console === 'undefined' || typeof console.error !== 'function') return;
+    console.error('[LiveTV][MPEG-TS] error', {
+      category: fields.category.label,
+      errorType: fields.errorType,
+      errorDetails: fields.errorDetails,
+      httpStatus: fields.httpStatus || null,
+      errorInfo: fields.errorInfo,
+      streamUrl: fields.streamUrl
+    });
+  }
+
   function clampNumber(value, fallback, min, max) {
     var number = Number(value);
     if (!isFinite(number)) number = Number(fallback);
@@ -127,15 +248,15 @@
     );
     var reconnectDelayMs = clampNumber(config.reconnectDelayMs, RECONNECT_DELAY_MS, 0, MAX_RECONNECT_DELAY_MS);
 
-    function emit(name, a, b) {
+    function emit(name, a, b, c) {
       if (!alive || typeof handlers[name] !== 'function') return;
-      try { handlers[name](a, b); } catch (e) {}
+      try { handlers[name](a, b, c); } catch (e) {}
     }
 
-    function fail(message, fatal) {
+    function fail(message, fatal, info) {
       if (!alive || failed || stopped) return;
       failed = true;
-      emit('onError', message, !!fatal);
+      emit('onError', message, !!fatal, info);
     }
 
     function warn(message) {
@@ -243,7 +364,11 @@
           if (engine && typeof engine.load === 'function') engine.load();
         } catch (e) {
           reconnecting = false;
-          fail('MPEG-TS playback failed: ' + text(e && e.message || 'reconnect failed'), true);
+          fail('MPEG-TS playback failed: ' + (printable(e) || 'reconnect failed'), true, {
+            category: 'network',
+            httpStatus: 0,
+            proxyBase: sanitizeStreamUrl(config.url)
+          });
           return;
         }
         reconnecting = false;
@@ -300,7 +425,11 @@
               }, reconnectDelayMs);
               return;
             }
-            fail('HLS playback failed: ' + detail, true);
+            fail('HLS playback failed: ' + detail, true, {
+              category: type === 'networkError' ? 'network' : 'hls',
+              httpStatus: 0,
+              proxyBase: sanitizeStreamUrl(config.url)
+            });
           } else {
             status('HLS warning: ' + detail);
           }
@@ -325,24 +454,47 @@
 
       var events = mpegts.Events || {};
       if (events.ERROR) {
-        // mpegts.js emits (event, errorType, detail, info); accept the older
-        // single-object shape too so tests and wrappers stay compatible.
-        engine.on(events.ERROR, function (event, errorType, data, info) {
-          var payload = (data && typeof data === 'object') ? data :
-            ((errorType && typeof errorType === 'object') ? errorType : null);
-          var meta = (info && typeof info === 'object') ? info :
-            ((data && typeof data === 'object') ? data : null);
-          var detail = text((payload && (payload.details || payload.type)) ||
-            data || (errorType && typeof errorType === 'string' && errorType !== 'NetworkError'
-              ? errorType : '') || 'MPEG-TS error');
-          var statusCode = Number((meta && (meta.code || meta.status)) ||
-            (payload && (payload.code || payload.status)) ||
-            (payload && payload.info && payload.info.code));
-          if (statusCode === 503 || detail.indexOf('503') !== -1) {
-            reconnectMpegts('Proxy is waking up (HTTP 503).', true);
+        // mpegts.js 1.7.3 emits:
+        //   EVENT_ERROR, errorType, errorDetail, errorInfo
+        // See player/mse-player.js: network/demux/MSE errors all use this shape.
+        engine.on(events.ERROR, function (event, errorType, errorDetail, errorInfo) {
+          if (reconnecting) return;
+
+          var infoStatus = errorInfo && typeof errorInfo === 'object' ?
+            (errorInfo.code || errorInfo.status || errorInfo.statusCode) : errorInfo;
+          var detailStatus = errorDetail && typeof errorDetail === 'object' ?
+            (errorDetail.code || errorDetail.status || errorDetail.statusCode) : 0;
+          var statusCode = httpStatusOf(infoStatus) || httpStatusOf(detailStatus);
+          var category = classifyMpegtsError(errorType, errorDetail, statusCode);
+          var typeText = printable(errorType);
+          var detailText = printable(errorDetail);
+          var infoText = errorInfoSummary(errorInfo);
+          var streamUrl = sanitizeStreamUrl(config.url);
+
+          logMpegtsError({
+            category: category,
+            errorType: typeText,
+            errorDetails: detailText,
+            httpStatus: statusCode,
+            errorInfo: infoText,
+            streamUrl: streamUrl
+          });
+
+          var summary = category.label;
+          if (detailText) summary += ': ' + detailText;
+          if (statusCode) summary += ' [HTTP ' + statusCode + ']';
+          if (infoText) summary += ' — ' + infoText;
+
+          if (isRecoverableMpegtsError(category, errorDetail, statusCode) &&
+              reconnects < MAX_LIVE_RECONNECTS) {
+            reconnectMpegts('MPEG-TS playback issue (' + summary + ')', true);
             return;
           }
-          fail('MPEG-TS playback failed: ' + detail, true);
+          fail('MPEG-TS playback failed (' + summary + ')', true, {
+            category: category.key,
+            httpStatus: statusCode,
+            proxyBase: streamUrl
+          });
         });
       }
 
