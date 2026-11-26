@@ -29,9 +29,10 @@ function jsonResponse(body, status) {
   };
 }
 
-function streamResponse(status, contentType) {
+function streamResponse(status, contentType, options) {
   const code = status || 200;
-  return {
+  const opts = options || {};
+  const response = {
     ok: code >= 200 && code < 300,
     status: code,
     headers: {
@@ -39,6 +40,20 @@ function streamResponse(status, contentType) {
         ? (contentType || 'video/mp2t') : null
     }
   };
+  if (opts.noBody) return response;
+  response.body = {
+    getReader() {
+      return {
+        async read() {
+          return opts.empty ? { done: true, value: undefined }
+            : { done: false, value: new Uint8Array([0x47]) };
+        },
+        async cancel() {}
+      };
+    },
+    async cancel() {}
+  };
+  return response;
 }
 
 function detectedBody(base) {
@@ -68,7 +83,11 @@ test('frontend client maps detect API output and verifies the real stream endpoi
   const calls = [];
 
   global.fetch = async function (url, init) {
-    calls.push({ url, method: (init && init.method) || 'GET' });
+    calls.push({
+      url,
+      method: (init && init.method) || 'GET',
+      headers: (init && init.headers) || {}
+    });
     return url.includes('/api/detect')
       ? jsonResponse(detectedBody('https://proxy.example'))
       : streamResponse(200, 'video/mp2t');
@@ -90,8 +109,59 @@ test('frontend client maps detect API output and verifies the real stream endpoi
     assert.ok(detectCall.url.includes('token%3Dsecret'));
     assert.ok(detectCall.url.includes('format=mpegts'));
     assert.ok(detectCall.url.includes('_cb='), 'detect request bypasses cached wake pages');
-    assert.equal(streamCall.method, 'HEAD', 'stream endpoint is checked without buffering media');
+    assert.equal(streamCall.method, 'GET', 'stream endpoint uses the playback method');
+    assert.equal(streamCall.headers.Range, 'bytes=0-0',
+      'verification reads one byte without buffering the live stream');
     assert.equal(result.failoverUsed, false);
+  } finally {
+    global.fetch = previousFetch;
+  }
+});
+
+test('ranged GET verification succeeds when a live upstream rejects HEAD', async () => {
+  const client = loadClient({ KTV_SMART_PROXY_URL: '' });
+  const previousFetch = global.fetch;
+  const calls = [];
+  global.fetch = async function (url, init) {
+    calls.push({ url, method: (init && init.method) || 'GET', headers: (init && init.headers) || {} });
+    if (url.includes('/api/detect')) return jsonResponse(detectedBody('https://proxy.example'));
+    // Emulate an upstream that answers playback GET with 206 but would reject HEAD.
+    return streamResponse(206, 'video/mp2t');
+  };
+
+  try {
+    const result = await client.detect('http://example.test/live.ts', {
+      baseUrl: 'https://proxy.example',
+      retries: 0
+    });
+    const streamCall = calls.find(call => call.url.includes('/api/stream'));
+    assert.equal(streamCall.method, 'GET');
+    assert.equal(streamCall.headers.Range, 'bytes=0-0');
+    assert.equal(result.engine, 'mpegts.js');
+    assert.equal(result.failoverUsed, false);
+  } finally {
+    global.fetch = previousFetch;
+  }
+});
+
+test('416 from a range-limited upstream does not trigger proxy failover', async () => {
+  const client = loadClient({ KTV_SMART_PROXY_URL: '' });
+  const previousFetch = global.fetch;
+  const calls = [];
+  global.fetch = async function (url) {
+    calls.push(url);
+    return url.includes('/api/detect')
+      ? jsonResponse(detectedBody('https://proxy.example'))
+      : streamResponse(416, 'video/mp2t', { empty: true });
+  };
+
+  try {
+    const result = await client.detect('http://example.test/live.ts', {
+      baseUrl: 'https://proxy.example',
+      retries: 0
+    });
+    assert.equal(result.baseUrl, 'https://proxy.example');
+    assert.equal(calls.length, 2, 'a range-only 416 must not contact another proxy');
   } finally {
     global.fetch = previousFetch;
   }

@@ -384,7 +384,9 @@ Playback routing:
    error is shown instead of a Mixed Content request.
 4. Proxy detection uses `/api/detect` with a 30-second timeout and one retry
    for temporary DNS/timeout/unreachable errors. The real `/api/stream`
-   endpoint is then checked with a HEAD request before playback starts.
+   endpoint is then checked with a minimal `GET` using `Range: bytes=0-0`
+   before playback starts. HEAD is not used because live IPTV upstreams often
+   reject it while serving the same URL normally over GET.
 5. Vercel is always tried first. Connection failures, timeouts, wake pages,
    invalid responses, and 5xx errors automatically retry the same stream on
    SnapDeploy. A valid Vercel stream never contacts SnapDeploy. Explicit

@@ -242,9 +242,11 @@
     });
   }
 
-  // Verify the real /api/stream endpoint with a header-only request before
-  // playback. This never buffers media and cannot replace a valid stream with
-  // a fallback; it only catches wake pages/5xx/network failures.
+  // Verify the real /api/stream endpoint with a minimal ranged GET before
+  // playback. HEAD is not equivalent to playback: many live IPTV upstreams
+  // reject HEAD while serving the same URL successfully over GET. A one-byte
+  // range check exercises the real GET path without buffering or consuming the
+  // media that LivePlayer will fetch separately.
   function verifyStream(result, options) {
     if (options.verifyStream === false || typeof fetch !== 'function') {
       return Promise.resolve(result);
@@ -262,7 +264,10 @@
       else if (external.addEventListener) external.addEventListener('abort', onExternal);
     }
 
-    var init = { method: 'HEAD', headers: { Accept: '*/*' } };
+    var init = {
+      method: 'GET',
+      headers: { Accept: '*/*', Range: 'bytes=0-0' }
+    };
     if (controller) init.signal = controller.signal;
     else if (external) init.signal = external;
 
@@ -280,26 +285,68 @@
       }
     }
 
+    function cancelBody(response) {
+      try {
+        if (response && response.body && typeof response.body.cancel === 'function') {
+          var pending = response.body.cancel();
+          if (pending && typeof pending.catch === 'function') pending.catch(function () {});
+        }
+      } catch (e) {}
+    }
+
+    function streamError(message, status) {
+      var error = new Error(message);
+      error.code = 'STREAM_PROXY_FAILED';
+      error.status = status;
+      error.failover = true;
+      return error;
+    }
+
     return fetch(result.mediaUrl, init).then(function (response) {
-      cleanup();
       if (external && external.aborted) throw abortError();
       var contentType = response.headers && typeof response.headers.get === 'function'
         ? String(response.headers.get('content-type') || '').toLowerCase() : '';
       if (contentType.indexOf('text/html') !== -1) {
-        var wakeError = new Error('The proxy returned a wake page instead of a stream.');
-        wakeError.code = 'STREAM_PROXY_FAILED';
-        wakeError.status = response.status || 503;
-        wakeError.failover = true;
-        throw wakeError;
+        cancelBody(response);
+        cleanup();
+        throw streamError('The proxy returned a wake page instead of a stream.',
+          response.status || 503);
       }
-      if (!response.ok) {
-        var httpError = new Error('The proxy stream endpoint returned HTTP ' + response.status + '.');
-        httpError.code = 'STREAM_PROXY_FAILED';
-        httpError.status = response.status;
-        httpError.failover = Number(response.status) >= 500;
-        throw httpError;
+      // 416 means this upstream does not honour the one-byte range. The
+      // endpoint is reachable and LivePlayer will use a normal unrestricted
+      // GET, so do not fail over on this response alone.
+      if (!response.ok && response.status !== 416) {
+        cancelBody(response);
+        cleanup();
+        throw streamError('The proxy stream endpoint returned HTTP ' + response.status + '.',
+          response.status);
       }
-      return result;
+
+      if (!response.body || typeof response.body.getReader !== 'function') {
+        cleanup();
+        return result;
+      }
+
+      var reader = response.body.getReader();
+      function releaseReader() {
+        try {
+          var pending = reader.cancel();
+          if (pending && typeof pending.catch === 'function') pending.catch(function () {});
+        } catch (e) {}
+      }
+      return reader.read().then(function (read) {
+        releaseReader();
+        cleanup();
+        if (external && external.aborted) throw abortError();
+        if (read.done && response.status !== 416) {
+          throw streamError('The proxy stream endpoint returned no media data.', response.status);
+        }
+        return result;
+      }, function (err) {
+        releaseReader();
+        cleanup();
+        throw err;
+      });
     }).catch(function (err) {
       cleanup();
       if (external && external.aborted) throw abortError();
