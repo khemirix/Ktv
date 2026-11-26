@@ -54,6 +54,21 @@
     }
   }
 
+  // A sleeping container can leave a cached "waking up" HTML page on a repeated
+  // proxy URL. A unique cache-buster keeps detect/playlist requests fresh
+  // without caching live media or exposing credentials in new places.
+  function withCacheBuster(value) {
+    if (typeof value !== 'string' || !value) return value;
+    var stamp = String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8);
+    try {
+      var parsed = new URL(value);
+      parsed.searchParams.set('_cb', stamp);
+      return parsed.href;
+    } catch (e) {
+      return value + (value.indexOf('?') === -1 ? '?' : '&') + '_cb=' + encodeURIComponent(stamp);
+    }
+  }
+
   function isEnabled(base) {
     return !!normalizeBase(base || (global && global.KTV_SMART_PROXY_URL));
   }
@@ -107,6 +122,7 @@
     var query = '?url=' + encodeURIComponent(url);
     var hint = options.metadata && (options.metadata.format || options.metadata.type);
     if (hint) query += '&format=' + encodeURIComponent(hint);
+    query += '&_cb=' + encodeURIComponent(String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8));
 
     var external = options.signal || null;
     var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -153,7 +169,7 @@
 
         return {
           originalUrl: url,
-          mediaUrl: rebaseToProxy(body.playbackUrl, base),
+          mediaUrl: withCacheBuster(rebaseToProxy(body.playbackUrl, base)),
           format: body.format,
           engine: body.engine,
           via: 'smart-proxy',

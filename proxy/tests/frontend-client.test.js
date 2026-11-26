@@ -54,13 +54,14 @@ test('frontend client maps detect API output into LivePlayer shape', async () =>
       baseUrl: 'https://proxy.example/',
       metadata: { format: 'mpegts' }
     });
-    assert.equal(result.mediaUrl, 'https://proxy.example/api/stream?url=abc');
+    assert.match(result.mediaUrl, /^https:\/\/proxy\.example\/api\/stream\?url=abc&_cb=/);
     assert.equal(result.engine, 'mpegts.js');
     assert.equal(result.via, 'smart-proxy');
     assert.equal(result.originalUrl, 'http://example.test/live?token=secret');
     assert.match(requestedUrl, /^https:\/\/proxy\.example\/api\/detect\?url=/);
     assert.ok(requestedUrl.includes('token%3Dsecret'));
     assert.ok(requestedUrl.includes('format=mpegts'));
+    assert.ok(requestedUrl.includes('_cb='), 'detect request bypasses cached wake pages');
   } finally {
     global.fetch = previousFetch;
   }
