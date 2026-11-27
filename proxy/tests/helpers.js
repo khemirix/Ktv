@@ -65,6 +65,7 @@ function state() {
     requests: [],
     hosts: [],
     userAgents: [],
+    headers: [],
     servernames: [],
     connections: 0,
     slowClosed: false,
@@ -80,6 +81,7 @@ function createUpstreamHandler(s) {
     s.requests.push(parsed.pathname + parsed.search);
     s.hosts.push(req.headers.host || '');
     s.userAgents.push(req.headers['user-agent'] || '');
+    s.headers.push(req.headers);
 
     if (pathName === '/stream.ts') {
       res.writeHead(200, { 'Content-Type': 'video/mp2t' });
@@ -175,6 +177,33 @@ function createUpstreamHandler(s) {
       res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
       res.end('#EXTM3U\n#EXTINF:4,\n' +
         'http://127.0.0.1:' + s.port + '/hls/seg1.ts?token=abc\n');
+      return;
+    }
+    if (pathName === '/hls/chunked.m3u8') {
+      res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+      res.write('#EXT');
+      setTimeout(function () {
+        if (!res.destroyed) res.end('M3U\n#EXTINF:4,\nseg1.ts?token=abc\n');
+      }, 10);
+      return;
+    }
+    if (pathName === '/hls/range.m3u8') {
+      var playlist = '#EXTM3U\n#EXTINF:4,\nseg1.ts?token=abc\n';
+      var body = Buffer.from(playlist);
+      var range = /bytes=(\d+)-(\d+)/.exec(req.headers.range || '');
+      if (range) {
+        var start = Number(range[1]);
+        var end = Math.min(Number(range[2]), body.length - 1);
+        res.writeHead(206, {
+          'Content-Type': 'application/vnd.apple.mpegurl',
+          'Content-Range': 'bytes ' + start + '-' + end + '/' + body.length,
+          'Accept-Ranges': 'bytes'
+        });
+        res.end(body.slice(start, end + 1));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+      res.end(body);
       return;
     }
     if (pathName === '/hls/wrong.m3u8') {

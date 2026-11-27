@@ -14,16 +14,18 @@
     4: 'This stream format is not supported by this browser'
   };
 
-  // Start as soon as the browser has a small amount of playable media. Waiting
-  // for a fixed 30s buffer made live channels start ~30s behind and made the
-  // initial window look like a repeating loop.
-  var INITIAL_BUFFER_SECONDS = 1.5;
-  var MIN_INITIAL_BUFFER_SECONDS = 0.5;
-  var MAX_INITIAL_BUFFER_SECONDS = 5;
+  // Start with a small playable window. Waiting for a fixed 30s buffer made
+  // live channels start behind the live edge and made the first window look
+  // like a repeating loop. Slow links ask for 1s, fast links for 2s.
+  var MIN_INITIAL_BUFFER_SECONDS = 0.75;
+  var MAX_INITIAL_BUFFER_SECONDS = 2;
   var INITIAL_START_TIMEOUT_MS = 5000;
+  var WATCHDOG_INTERVAL_MS = 1000;
+  var STALL_TIMEOUT_MS = 6000;
   var RECONNECT_DELAY_MS = 1000;
   var MAX_RECONNECT_DELAY_MS = 4000;
   var MAX_LIVE_RECONNECTS = 2;
+  var LIVE_EDGE_LATENCY_SECONDS = 2;
 
   var MPEGTS_OPTIONS = {
     enableWorker: true,
@@ -48,9 +50,11 @@
     liveSyncDurationCount: 3,
     liveMaxLatencyDurationCount: 8,
     maxLiveSyncPlaybackRate: 1.5,
-    maxBufferLength: 30,
+    // Keeping the forward/back window short prevents an old 30s fragment
+    // window from being replayed after a stall. It does not change ABR.
+    maxBufferLength: 12,
+    backBufferLength: 10,
     maxBufferHole: 0.5,
-    backBufferLength: 30,
     // -1 keeps hls.js automatic quality selection enabled for master playlists.
     startLevel: -1
   };
@@ -89,7 +93,7 @@
   }
 
   function printable(value) {
-    if (value === null || value === undefined) return '';
+    if (value === null || typeof value === 'undefined') return '';
     if (typeof value === 'string') return value;
     if (typeof value === 'number' || typeof value === 'boolean') return String(value);
     if (value instanceof Error) {
@@ -222,6 +226,67 @@
     return 0;
   }
 
+  function bufferedEndOf(video) {
+    var buffered = video && video.buffered;
+    if (!buffered || typeof buffered.length !== 'number') return 0;
+    var end = 0;
+    for (var i = 0; i < buffered.length; i += 1) {
+      var value = Number(buffered.end(i));
+      if (isFinite(value) && value > end) end = value;
+    }
+    return end;
+  }
+
+  function connectionOf() {
+    var nav = root && root.navigator;
+    return (nav && (nav.connection || nav.mozConnection || nav.webkitConnection)) || null;
+  }
+
+  function networkClass() {
+    var connection = connectionOf();
+    var downlink = Number(connection && connection.downlink);
+    var effective = text(connection && connection.effectiveType).toLowerCase();
+    if (connection && connection.saveData) return 'slow';
+    if (effective === 'slow-2g' || effective === '2g' ||
+        (isFinite(downlink) && downlink > 0 && downlink < 1.5)) return 'slow';
+    if (effective === '4g' || (isFinite(downlink) && downlink >= 5)) return 'fast';
+    return 'normal';
+  }
+
+  function estimatedBandwidth() {
+    var downlink = Number(connectionOf() && connectionOf().downlink);
+    if (isFinite(downlink) && downlink > 0) return downlink * 1000 * 1000;
+    return 0;
+  }
+
+  function targetInitialBuffer(quality) {
+    var speed = networkClass();
+    var target = speed === 'slow' ? 1 : speed === 'fast' ? 2 : 1.5;
+    if (quality === 'data-saver') target = Math.min(target, 1);
+    return clampNumber(target, 1.5, MIN_INITIAL_BUFFER_SECONDS, MAX_INITIAL_BUFFER_SECONDS);
+  }
+
+  // Only proxy URLs get a fresh query marker. Direct/signed URLs are never
+  // modified, so provider signatures and credentials stay untouched.
+  function freshLiveUrl(raw) {
+    var url = text(raw);
+    try {
+      var parsed = new URL(url);
+      if (!/\/api\/stream(?:\/|\?|$)/i.test(parsed.pathname) && !parsed.searchParams.has('url')) {
+        return url;
+      }
+      parsed.searchParams.set('_ktv', String(Date.now()));
+      return parsed.href;
+    } catch (e) {
+      return url;
+    }
+  }
+
+  function normalizeQuality(value) {
+    var mode = text(value).toLowerCase();
+    return ['auto', 'data-saver', 'balanced', 'best'].indexOf(mode) !== -1 ? mode : 'auto';
+  }
+
   function play(config) {
     config = config || {};
     var video = config.video;
@@ -237,16 +302,34 @@
     var playStarted = false;
     var reconnecting = false;
     var reconnects = 0;
+    var fullReconnectPending = false;
+    var recoveryGeneration = 0;
+    var lastHlsErrorType = '';
     var listeners = [];
     var readyListeners = [];
     var timers = [];
+    var watchdogTimer = null;
+    var userPaused = false;
+    var internalPause = false;
+    var lastProgressAt = Date.now();
+    var lastTime = Number(video && video.currentTime) || 0;
+    var lastBufferEnd = 0;
+    var initialArmed = false;
+    var initialCheck = null;
+    var quality = normalizeQuality(config.quality);
+    var hlsLevels = [];
+    var appliedQualityKey = '';
+    var formatKind = text(config.format).toLowerCase();
+    var isHls = engineKind === 'hls.js' || engineKind === 'native-hls' || formatKind === 'hls';
     var initialBufferSeconds = clampNumber(
       config.initialBufferSeconds,
-      INITIAL_BUFFER_SECONDS,
+      targetInitialBuffer(quality),
       MIN_INITIAL_BUFFER_SECONDS,
       MAX_INITIAL_BUFFER_SECONDS
     );
     var reconnectDelayMs = clampNumber(config.reconnectDelayMs, RECONNECT_DELAY_MS, 0, MAX_RECONNECT_DELAY_MS);
+    var stallTimeoutMs = clampNumber(config.stallTimeoutMs, STALL_TIMEOUT_MS, 50, 60000);
+    var watchdogIntervalMs = clampNumber(config.watchdogIntervalMs, WATCHDOG_INTERVAL_MS, 10, 10000);
 
     function emit(name, a, b, c) {
       if (!alive || typeof handlers[name] !== 'function') return;
@@ -256,6 +339,7 @@
     function fail(message, fatal, info) {
       if (!alive || failed || stopped) return;
       failed = true;
+      stopWatchdog();
       emit('onError', message, !!fatal, info);
     }
 
@@ -265,6 +349,10 @@
     }
 
     function status(message) { emit('onStatus', message); }
+
+    function markProgress() {
+      lastProgressAt = Date.now();
+    }
 
     function addTimer(fn, delay) {
       var timer = setTimeout(function () {
@@ -279,6 +367,11 @@
     function clearTimers() {
       for (var i = 0; i < timers.length; i += 1) clearTimeout(timers[i]);
       timers = [];
+    }
+
+    function stopWatchdog() {
+      if (watchdogTimer !== null) clearInterval(watchdogTimer);
+      watchdogTimer = null;
     }
 
     function removeListener(name, fn) {
@@ -304,12 +397,124 @@
       readyListeners = [];
     }
 
+    function seekLiveEdge(reason) {
+      if (!video) return false;
+      var seekable = video.seekable;
+      var livePosition = Number(engine && engine.liveSyncPosition);
+      var target = -1;
+      var lower = 0;
+      var upper = -1;
+
+      if (seekable && typeof seekable.length === 'number' && seekable.length > 0) {
+        var index = seekable.length - 1;
+        lower = Number(seekable.start(index));
+        upper = Number(seekable.end(index));
+        if (isFinite(upper)) target = upper - LIVE_EDGE_LATENCY_SECONDS;
+      }
+      if (isFinite(livePosition) && livePosition > 0 && (upper < 0 || livePosition <= upper)) {
+        target = Math.max(target, livePosition);
+      }
+      if (!isFinite(target) || target < 0) return false;
+      if (lower > 0) target = Math.max(target, lower);
+      if (upper >= 0) target = Math.min(target, upper);
+
+      var current = Number(video.currentTime) || 0;
+      if (target <= current + 0.5) return false;
+      try { video.currentTime = target; } catch (e) { return false; }
+      markProgress();
+      status(reason + ' Resuming near the live edge.');
+      return true;
+    }
+
+    function applyQuality(announce) {
+      if (!engine || !isHls || engineKind !== 'hls.js') return;
+      var key = quality + ':' + hlsLevels.length + ':' + hlsLevels.map(function (level) {
+        return Number(level && (level.bitrate || level.avgBitrate || level.peakBitrate)) || 0;
+      }).join(',');
+      if (key === appliedQualityKey) return;
+      appliedQualityKey = key;
+
+      var ranked = hlsLevels.map(function (level, index) {
+        return {
+          index: index,
+          bitrate: Number(level && (level.bitrate || level.avgBitrate || level.peakBitrate)) || 0
+        };
+      }).filter(function (item) { return item.bitrate > 0; })
+        .sort(function (a, b) { return a.bitrate - b.bitrate; });
+      if (!ranked.length) return;
+
+      var chosen = -1;
+      if (quality === 'data-saver') {
+        chosen = ranked[0].index;
+      } else if (quality === 'best') {
+        chosen = ranked[ranked.length - 1].index;
+      } else if (quality === 'balanced') {
+        var budget = estimatedBandwidth() * 0.6 || 1200000;
+        chosen = ranked[0].index;
+        ranked.forEach(function (item) {
+          if (item.bitrate <= budget) chosen = item.index;
+        });
+      }
+
+      try {
+        engine.autoLevelCapping = chosen >= 0 ? chosen : -1;
+        engine.nextLevel = chosen;
+      } catch (e) {}
+      if (announce && quality !== 'auto') {
+        status('Live quality: ' + quality.replace('-', ' '));
+      }
+    }
+
+    function setQuality(mode) {
+      quality = normalizeQuality(mode);
+      appliedQualityKey = '';
+      try {
+        if (typeof localStorage !== 'undefined' && localStorage) {
+          localStorage.setItem('ktvLiveQuality', quality);
+        }
+      } catch (e) {}
+      applyQuality(true);
+      return quality;
+    }
+
+    function watchdogTick() {
+      if (!alive || stopped || failed || !playStarted || userPaused) return;
+      if (video && video.paused) {
+        // A browser pause without an explicit play event is usually autoplay
+        // blocking, not a stalled live stream.
+        return;
+      }
+
+      var now = Date.now();
+      var time = Number(video && video.currentTime) || 0;
+      var bufferEnd = bufferedEndOf(video);
+      if (time > lastTime + 0.05 || bufferEnd > lastBufferEnd + 0.05) markProgress();
+      lastTime = time;
+      lastBufferEnd = bufferEnd;
+
+      if (now - lastProgressAt < stallTimeoutMs) return;
+      if (isHls) seekLiveEdge('Live playback was behind the live edge.');
+      if (recoveryGeneration > 0 && fullReconnectPending) return;
+      lightweightRecover('Live playback stopped progressing.');
+    }
+
+    function startWatchdog() {
+      if (watchdogTimer !== null || !playStarted) return;
+      watchdogTimer = setInterval(watchdogTick, watchdogIntervalMs);
+      if (watchdogTimer && typeof watchdogTimer.unref === 'function') watchdogTimer.unref();
+    }
+
     function safePlay(force) {
       if (stopped || playStarted) return;
       if (!force && readyStateOf(video) < 2 && bufferedSeconds(video) < initialBufferSeconds) return;
       playStarted = true;
+      userPaused = false;
+      markProgress();
+      lastTime = Number(video && video.currentTime) || 0;
+      lastBufferEnd = bufferedEndOf(video);
       clearReadyListeners();
       clearTimers();
+      startWatchdog();
 
       if (!video || typeof video.play !== 'function') return;
       var attempt;
@@ -323,13 +528,15 @@
     }
 
     function armInitialStart() {
-      if (stopped || playStarted) return;
+      if (stopped || playStarted || initialArmed) return;
+      initialArmed = true;
       function checkReady() {
         if (stopped || playStarted) return;
         if (readyStateOf(video) >= 2 || bufferedSeconds(video) >= initialBufferSeconds) {
           safePlay(false);
         }
       }
+      initialCheck = checkReady;
       onVideoEvent('progress', checkReady, false);
       onVideoEvent('loadeddata', checkReady, false);
       onVideoEvent('canplay', checkReady, false);
@@ -344,26 +551,63 @@
       }, INITIAL_START_TIMEOUT_MS);
     }
 
-    function reconnectMpegts(reason, fatalWhenExhausted) {
-      if (stopped || reconnecting || failed) return;
-      if (reconnects >= MAX_LIVE_RECONNECTS) {
-        if (fatalWhenExhausted) fail(reason, true);
-        else warn(reason);
+    function recoveryDelay(attempt) {
+      var exponent = Math.max(0, (Number(attempt) || 1) - 1);
+      return Math.min(MAX_RECONNECT_DELAY_MS, reconnectDelayMs * Math.pow(2, exponent));
+    }
+
+    function requestFullReconnect(reason) {
+      if (stopped || failed || fullReconnectPending) return;
+      if (typeof config.onReconnect !== 'function') {
+        warn(reason);
         return;
       }
-      reconnecting = true;
-      reconnects += 1;
-      playStarted = false;
-      status(reason + ' Retrying...');
+      fullReconnectPending = true;
+      recoveryGeneration += 1;
+      var generation = recoveryGeneration;
+      status('Reconnecting to the latest live data...');
       addTimer(function () {
         if (stopped) return;
+        config.onReconnect(reason, generation);
+      }, recoveryDelay(reconnects + 1));
+    }
+
+    function beginRecovery(reason, action, options) {
+      options = options || {};
+      if (stopped || reconnecting || failed || fullReconnectPending) return false;
+      var limit = options.maxAttempts || MAX_LIVE_RECONNECTS;
+      if (reconnects >= limit) {
+        if (typeof options.onExhausted === 'function') options.onExhausted();
+        else requestFullReconnect(reason);
+        return true;
+      }
+      reconnects += 1;
+      reconnecting = true;
+      status(reason);
+      addTimer(function () {
+        if (stopped) return;
+        reconnecting = false;
+        try { action(); } catch (e) {
+          fail('Live playback failed: ' + (printable(e) || 'recovery failed'), true, {
+            category: isHls ? 'hls' : 'network',
+            httpStatus: 0,
+            proxyBase: sanitizeStreamUrl(config.url)
+          });
+          return;
+        }
+        markProgress();
+      }, recoveryDelay(reconnects));
+      return true;
+    }
+
+    function reconnectMpegts(reason, fatalWhenExhausted, onExhausted) {
+      return beginRecovery(reason + ' Retrying...', function () {
         try {
           if (engine && typeof engine.unload === 'function') engine.unload();
         } catch (e) {}
         try {
           if (engine && typeof engine.load === 'function') engine.load();
         } catch (e) {
-          reconnecting = false;
           fail('MPEG-TS playback failed: ' + (printable(e) || 'reconnect failed'), true, {
             category: 'network',
             httpStatus: 0,
@@ -371,13 +615,64 @@
           });
           return;
         }
-        reconnecting = false;
+        playStarted = false;
+        initialArmed = false;
+        initialCheck = null;
         armInitialStart();
-      }, Math.min(MAX_RECONNECT_DELAY_MS, reconnectDelayMs * reconnects));
+      }, {
+        onExhausted: onExhausted || function () {
+          if (fatalWhenExhausted) fail(reason, true);
+          else warn(reason);
+        }
+      });
+    }
+
+    function lightweightRecover(reason) {
+      if (isHls && engineKind === 'hls.js') {
+        return beginRecovery(reason, function () {
+          var type = lastHlsErrorType;
+          var recovered = false;
+          if (type === 'mediaError' && engine && typeof engine.recoverMediaError === 'function') {
+            engine.recoverMediaError();
+            recovered = true;
+          } else if (type === 'networkError' && engine && typeof engine.recoverNetworkError === 'function') {
+            engine.recoverNetworkError();
+            recovered = true;
+          } else if (engine && typeof engine.startLoad === 'function') {
+            engine.startLoad();
+            recovered = true;
+          }
+          if (!recovered && engine && typeof engine.loadSource === 'function') {
+            engine.loadSource(freshLiveUrl(config.url));
+          }
+          seekLiveEdge(reason);
+        }, {
+          onExhausted: function () { requestFullReconnect(reason); }
+        });
+      }
+      if (engineKind === 'mpegts.js') {
+        return reconnectMpegts(reason, false, function () { requestFullReconnect(reason); });
+      }
+      requestFullReconnect(reason);
+      return true;
     }
 
     onVideoEvent('playing', function () {
+      userPaused = false;
+      markProgress();
       emit('onPlaying', { engine: config.engine, format: config.format });
+    }, true);
+    onVideoEvent('play', function () { userPaused = false; markProgress(); }, true);
+    onVideoEvent('pause', function () {
+      if (!internalPause && playStarted) userPaused = true;
+    }, true);
+    onVideoEvent('timeupdate', function () {
+      var time = Number(video && video.currentTime) || 0;
+      if (time > lastTime + 0.05) { markProgress(); lastTime = time; }
+    }, true);
+    onVideoEvent('progress', function () {
+      var end = bufferedEndOf(video);
+      if (end > lastBufferEnd + 0.05) { markProgress(); lastBufferEnd = end; }
     }, true);
     onVideoEvent('waiting', function () {
       emit('onBuffering', 'Buffering...');
@@ -403,26 +698,46 @@
         return;
       }
       var options = mergeOptions(HLS_OPTIONS, config.hlsOptions);
+      if (quality === 'data-saver') options.startLevel = 0;
       engine = new Hls(options);
+      hlsLevels = [];
+      appliedQualityKey = '';
 
       var events = Hls.Events || {};
       if (events.MANIFEST_PARSED) {
-        engine.on(events.MANIFEST_PARSED, function () {
+        engine.on(events.MANIFEST_PARSED, function (event, data) {
           status('HLS manifest loaded');
-          safePlay(true);
+          if (data && Array.isArray(data.levels)) hlsLevels = data.levels;
+          applyQuality(false);
+          if (initialCheck) initialCheck();
+          // MANIFEST_PARSED alone is not proof that playable media is ready.
         });
+      }
+      if (events.LEVELS_UPDATED) {
+        engine.on(events.LEVELS_UPDATED, function (event, data) {
+          if (data && Array.isArray(data.levels)) hlsLevels = data.levels;
+          applyQuality(false);
+        });
+      }
+      if (events.FRAG_LOADED || events.BUFFER_APPENDED) {
+        var onMedia = function () {
+          markProgress();
+          if (initialCheck) initialCheck();
+        };
+        if (events.FRAG_LOADED) engine.on(events.FRAG_LOADED, onMedia);
+        if (events.BUFFER_APPENDED) engine.on(events.BUFFER_APPENDED, onMedia);
       }
       if (events.ERROR) {
         engine.on(events.ERROR, function (event, data) {
           var detail = text((data && (data.details || data.type)) || 'HLS error');
           if (data && data.fatal) {
             var type = text(data.type);
+            lastHlsErrorType = type;
             if (type === 'networkError' && reconnects < 1) {
-              reconnects += 1;
-              status('HLS network error; resuming...');
-              addTimer(function () {
+              beginRecovery('HLS network error; resuming...', function () {
                 if (engine && typeof engine.startLoad === 'function') engine.startLoad();
-              }, reconnectDelayMs);
+                seekLiveEdge('HLS network recovered.');
+              }, { maxAttempts: 1 });
               return;
             }
             fail('HLS playback failed: ' + detail, true, {
@@ -438,6 +753,7 @@
 
       engine.loadSource(config.url);
       engine.attachMedia(video);
+      armInitialStart();
     }
 
     function startMpegts() {
@@ -485,8 +801,7 @@
           if (statusCode) summary += ' [HTTP ' + statusCode + ']';
           if (infoText) summary += ' — ' + infoText;
 
-          if (isRecoverableMpegtsError(category, errorDetail, statusCode) &&
-              reconnects < MAX_LIVE_RECONNECTS) {
+          if (isRecoverableMpegtsError(category, errorDetail, statusCode)) {
             reconnectMpegts('MPEG-TS playback issue (' + summary + ')', true);
             return;
           }
@@ -517,21 +832,24 @@
       if (typeof video.load === 'function') {
         try { video.load(); } catch (e) {}
       }
-      safePlay(true);
+      if (isHls) armInitialStart();
+      else safePlay(true);
     }
 
     status('Starting ' + text(config.engine || config.format || 'stream') + ' playback');
 
     if (engineKind === 'hls.js') startHlsJs();
     else if (engineKind === 'mpegts.js') startMpegts();
-    else if ((engineKind === 'native' || engineKind === 'native-hls')) startNative();
+    else if (engineKind === 'native' || engineKind === 'native-hls') startNative();
     else fail(config.message || 'This stream format is not supported.', true);
 
     return {
       destroy: function () {
         stopped = true;
         alive = false;
+        recoveryGeneration += 1;
         clearTimers();
+        stopWatchdog();
         clearReadyListeners();
         for (var i = 0; i < listeners.length; i += 1) {
           if (!video || typeof video.removeEventListener !== 'function') break;
@@ -542,12 +860,15 @@
           try { engine.destroy(); } catch (e) {}
         }
         if (video) {
+          internalPause = true;
           try { video.pause(); } catch (e) {}
           try { video.removeAttribute('src'); } catch (e) {}
           try { video.load(); } catch (e) {}
         }
       },
-      kind: function () { return engineKind || 'none'; }
+      kind: function () { return engineKind || 'none'; },
+      setQuality: function (mode) { return setQuality(mode); },
+      quality: function () { return quality; }
     };
   }
 

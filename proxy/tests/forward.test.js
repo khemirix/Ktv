@@ -43,6 +43,57 @@ test('Range requests are forwarded with status and headers intact', async () => 
   }
 });
 
+test('live stream requests ask the upstream not to serve stale cached data', async () => {
+  const upstream = await startUpstream();
+  const proxy = await startProxy();
+  try {
+    const res = await fetch(apiUrl(proxy.base, '/api/stream', upstream.base + '/stream.ts'));
+    await res.arrayBuffer();
+    assert.equal(upstream.headers.length, 1);
+    assert.match(String(upstream.headers[0]['cache-control'] || ''), /no-cache/i);
+    assert.equal(String(upstream.headers[0].pragma || ''), 'no-cache');
+  } finally {
+    await proxy.close();
+    await upstream.close();
+  }
+});
+
+test('a playlist signature split across network chunks is still rewritten', async () => {
+  const upstream = await startUpstream();
+  const proxy = await startProxy();
+  try {
+    const res = await fetch(apiUrl(proxy.base, '/api/stream', upstream.base + '/hls/chunked.m3u8'));
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('x-proxy-format'), 'hls');
+    const body = await res.text();
+    assert.match(body, /^#EXTM3U/);
+    assert.match(body, /\/api\/stream\?url=/);
+    assert.match(body, /token%3Dabc/);
+  } finally {
+    await proxy.close();
+    await upstream.close();
+  }
+});
+
+test('range-requested playlists are served as complete rewritten documents', async () => {
+  const upstream = await startUpstream();
+  const proxy = await startProxy();
+  try {
+    const res = await fetch(apiUrl(proxy.base, '/api/stream', upstream.base + '/hls/range.m3u8'), {
+      headers: { Range: 'bytes=0-200' }
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-range'), null);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+    const body = await res.text();
+    assert.match(body, /^#EXTM3U/);
+    assert.match(body, /\/api\/stream\?url=/);
+  } finally {
+    await proxy.close();
+    await upstream.close();
+  }
+});
+
 test('client disconnect closes the upstream connection', async () => {
   const upstream = await startUpstream();
   const proxy = await startProxy();

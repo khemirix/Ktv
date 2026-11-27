@@ -215,7 +215,10 @@ function createContext(initialTracks) {
     providers: [
       { id: 'auto', label: 'Auto' },
       { id: 'mysubs', label: 'MySubs' },
-      { id: 'subtitles-website', label: 'subtitles.website' }
+      { id: 'subtitles-website', label: 'subtitles.website' },
+      { id: 'subdl', label: 'SubDL' },
+      { id: 'wyzie', label: 'Wyzie Subs' },
+      { id: 'opensubtitles', label: 'OpenSubtitles.com' }
     ],
     applyStyle() { subtitleCalls.push(['applyStyle']); return { size: 'medium', background: 'dark' }; },
     attach() {
@@ -224,6 +227,10 @@ function createContext(initialTracks) {
         setProvider(id) { subtitleCalls.push(['setProvider', id]); },
         setLanguage(code) {
           subtitleCalls.push(['setLanguage', code]);
+          return true;
+        },
+        selectSubtitle(id) {
+          subtitleCalls.push(['selectSubtitle', id]);
           return true;
         },
         setSize(size) { subtitleCalls.push(['setSize', size]); },

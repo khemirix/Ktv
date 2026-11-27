@@ -94,11 +94,34 @@ function collectUpTo(response, maxBytes, onChunk) {
   });
 }
 
+function hasPlaylistHint(hints) {
+  hints = hints || {};
+  if (textValue(hints.format) === 'hls') return true;
+  if (/mpegurl|m3u8/i.test(textValue(hints.contentType))) return true;
+  return /\.m3u8(?:$|[?#])/i.test(textValue(hints.url));
+}
+
+function textValue(value) {
+  return String(value === null || value === undefined ? '' : value);
+}
+
+function looksLikePlaylistPrefix(bytes) {
+  var sample = bytes.slice(0, 128).toString('utf8')
+    .replace(/^\uFEFF/, '')
+    .replace(/^[\s]+/, '');
+  return /^#EX/i.test(sample);
+}
+
 // Reads the first bytes, holds them only when they are an HLS playlist, and
-// otherwise releases them immediately for progressive forwarding.
+// otherwise releases them immediately for progressive forwarding. A URL or
+// Content-Type hint is used to finish a partial playlist signature; the hint
+// window is bounded so a mislabelled binary stream is only delayed briefly.
 function readWithDecision(response, options) {
   options = options || {};
   var maxPlaylistBytes = options.maxPlaylistBytes || 1048576;
+  var maxHintBytes = options.maxHintBytes || 8192;
+  var hints = options.hints || {};
+  var playlistHint = hasPlaylistHint(hints);
   var classify = options.classify || function () { return null; };
 
   return new Promise(function (resolve, reject) {
@@ -136,8 +159,19 @@ function readWithDecision(response, options) {
       total += buffer.length;
 
       if (mode === 'undecided') {
-        if (classify(snapshot()) === 'hls') {
+        var bytes = snapshot();
+        var classified = classify(bytes);
+        if (classified === 'hls') {
           mode = 'playlist';
+        } else if (classified) {
+          finish('prefix', false);
+          return;
+        } else if (playlistHint && looksLikePlaylistPrefix(bytes)) {
+          mode = 'playlist';
+        } else if (playlistHint && total < maxHintBytes) {
+          // A playlist signature can arrive split across chunks. Continue only
+          // while the URL/Content-Type says HLS and the window is still small.
+          return;
         } else {
           finish('prefix', false);
           return;

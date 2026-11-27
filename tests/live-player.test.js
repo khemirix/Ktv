@@ -56,20 +56,33 @@ function hlsStub() {
     source: '',
     attached: null,
     destroyed: false,
-    startLoadCalls: 0
+    startLoadCalls: 0,
+    recoverMediaErrorCalls: 0,
+    recoverNetworkErrorCalls: 0,
+    lastEngine: null
   };
   const handlers = {};
   function Hls(options) {
     calls.constructed = true;
     calls.options = options;
+    calls.lastEngine = this;
+    this.liveSyncPosition = 0;
     this.on = (name, fn) => { (handlers[name] = handlers[name] || []).push(fn); };
     this.loadSource = (url) => { calls.source = url; };
     this.attachMedia = (video) => { calls.attached = video; };
     this.startLoad = () => { calls.startLoadCalls += 1; };
+    this.recoverMediaError = () => { calls.recoverMediaErrorCalls += 1; };
+    this.recoverNetworkError = () => { calls.recoverNetworkErrorCalls += 1; };
     this.destroy = () => { calls.destroyed = true; };
   }
   Hls.isSupported = () => true;
-  Hls.Events = { MANIFEST_PARSED: 'manifest', ERROR: 'error' };
+  Hls.Events = {
+    MANIFEST_PARSED: 'manifest',
+    LEVELS_UPDATED: 'levels',
+    FRAG_LOADED: 'fragment',
+    BUFFER_APPENDED: 'appended',
+    ERROR: 'error'
+  };
   return {
     Hls,
     calls,
@@ -132,6 +145,32 @@ function has(calls, name, fragment) {
 }
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 5));
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+function withNavigatorConnection(connection, fn) {
+  const saved = Object.prototype.hasOwnProperty.call(global, 'navigator')
+    ? global.navigator
+    : undefined;
+  const had = Object.prototype.hasOwnProperty.call(global, 'navigator');
+  Object.defineProperty(global, 'navigator', {
+    value: { connection: connection },
+    configurable: true,
+    writable: true
+  });
+  return Promise.resolve()
+    .then(fn)
+    .finally(() => {
+      if (had) {
+        Object.defineProperty(global, 'navigator', {
+          value: saved,
+          configurable: true,
+          writable: true
+        });
+      } else {
+        delete global.navigator;
+      }
+    });
+}
 
 async function run() {
   let checks = 0;
@@ -158,17 +197,25 @@ async function run() {
     ok(o.liveSyncDurationCount === 3, 'HLS live sync target is 3 TLs');
     ok(o.liveMaxLatencyDurationCount === 8, 'HLS live latency is capped at 8 TLs');
     ok(o.maxLiveSyncPlaybackRate === 1.5, 'HLS live catch-up rate is bounded');
-    ok(o.maxBufferLength === 30 && o.backBufferLength === 30, 'HLS buffers stay short');
+    ok(o.maxBufferLength === 12 && o.backBufferLength === 10,
+      'HLS keeps a short live window instead of replaying 30s fragments');
     ok(o.maxBufferHole === 0.5, 'HLS can bridge small buffer holes');
     ok(o.startLevel === -1, 'HLS automatic quality selection is preserved');
 
-    hls.emit('manifest', 'manifest', {});
-    ok(video.playCalls() === 1, 'HLS starts once on manifest parsed');
+    hls.emit('manifest', 'manifest', { levels: [
+      { bitrate: 400000 }, { bitrate: 1200000 }, { bitrate: 3000000 }
+    ] });
+    ok(video.playCalls() === 0, 'manifest alone does not start playback');
+
+    video.setBuffered([[0, 1.6]]);
+    hls.emit('fragment', 'fragment', {});
+    ok(video.playCalls() === 1, 'HLS starts once after playable media arrives');
     video.emit('playing');
     ok(has(handlers.calls, 'playing'), 'HLS playing event is forwarded');
 
     // A playlist refresh must not restart playback.
-    hls.emit('manifest', 'manifest', {});
+    hls.emit('manifest', 'manifest', { levels: [] });
+    hls.emit('appended', 'appended', {});
     ok(video.playCalls() === 1, 'HLS playlist refresh does not restart playback');
   }
 
@@ -468,6 +515,154 @@ async function run() {
     });
     ok(has(handlers.calls, 'error', 'server-side transcoding'), 'unsupported message is shown to the user');
     ok(video.src === '', 'unsupported format does not set a video src');
+  }
+
+  // 12. Initial buffering adapts to the connection without over-waiting.
+  await withNavigatorConnection({ effectiveType: '2g', downlink: 0.4, saveData: false }, function () {
+    const video = videoStub();
+    const hls = hlsStub();
+    LivePlayer.play({
+      video, Hls: hls.Hls, engine: 'hls.js', format: 'hls',
+      url: 'http://example.test/slow.m3u8', handlers: handlersStub()
+    });
+    hls.emit('manifest', 'manifest', { levels: [] });
+    video.setBuffered([[0, 0.9]]);
+    hls.emit('fragment', 'fragment', {});
+    ok(video.playCalls() === 0, 'slow link waits for at least one second of media');
+    video.setBuffered([[0, 1.1]]);
+    hls.emit('fragment', 'fragment', {});
+    ok(video.playCalls() === 1, 'slow link starts without waiting for a large buffer');
+  });
+  await withNavigatorConnection({ effectiveType: '4g', downlink: 10, saveData: false }, function () {
+    const video = videoStub();
+    const hls = hlsStub();
+    LivePlayer.play({
+      video, Hls: hls.Hls, engine: 'hls.js', format: 'hls',
+      url: 'http://example.test/fast.m3u8', handlers: handlersStub()
+    });
+    hls.emit('manifest', 'manifest', { levels: [] });
+    video.setBuffered([[0, 1.4]]);
+    hls.emit('fragment', 'fragment', {});
+    ok(video.playCalls() === 0, 'fast link waits for a two second live window');
+    video.setBuffered([[0, 2.1]]);
+    hls.emit('fragment', 'fragment', {});
+    ok(video.playCalls() === 1, 'fast link starts once enough media is present');
+  });
+
+  // 13. Quality modes use the real HLS variants available in the manifest.
+  {
+    const video = videoStub();
+    const hls = hlsStub();
+    const instance = LivePlayer.play({
+      video, Hls: hls.Hls, engine: 'hls.js', format: 'hls',
+      url: 'http://example.test/quality.m3u8', handlers: handlersStub(),
+      quality: 'data-saver'
+    });
+    ok(hls.calls.options.startLevel === 0, 'data saver starts on the lowest variant');
+    hls.emit('manifest', 'manifest', { levels: [
+      { bitrate: 400000 }, { bitrate: 1200000 }, { bitrate: 3000000 }
+    ] });
+    ok(hls.calls.lastEngine.autoLevelCapping === 0, 'data saver caps to the lowest variant');
+    ok(hls.calls.lastEngine.nextLevel === 0, 'data saver selects the lowest real level');
+    ok(instance.setQuality('best') === 'best', 'quality mode can be changed while playing');
+    ok(hls.calls.lastEngine.nextLevel === 2, 'best selects the highest real variant');
+    ok(hls.calls.lastEngine.autoLevelCapping === 2, 'best caps to the highest real variant');
+    instance.setQuality('balanced');
+    ok(hls.calls.lastEngine.nextLevel === 1, 'balanced selects a real mid-range variant');
+    instance.destroy();
+  }
+
+  // 14. The watchdog does not recover while the viewer intentionally pauses.
+  {
+    const video = videoStub();
+    const hls = hlsStub();
+    const instance = LivePlayer.play({
+      video, Hls: hls.Hls, engine: 'hls.js', format: 'hls',
+      url: 'http://example.test/paused.m3u8', handlers: handlersStub(),
+      watchdogIntervalMs: 20, stallTimeoutMs: 60, reconnectDelayMs: 1
+    });
+    hls.emit('manifest', 'manifest', { levels: [] });
+    video.setBuffered([[0, 2]]);
+    hls.emit('fragment', 'fragment', {});
+    video.emit('play');
+    video.emit('pause');
+    await wait(160);
+    ok(hls.calls.startLoadCalls === 0, 'a paused stream is never treated as stalled');
+    instance.destroy();
+  }
+
+  // 15. HLS stalls use lightweight recovery first, then a bounded fresh reconnect.
+  {
+    const video = videoStub();
+    const hls = hlsStub();
+    const handlers = handlersStub();
+    const reconnects = [];
+    const instance = LivePlayer.play({
+      video, Hls: hls.Hls, engine: 'hls.js', format: 'hls',
+      url: 'http://example.test/stalled.m3u8', handlers,
+      watchdogIntervalMs: 20, stallTimeoutMs: 60, reconnectDelayMs: 1,
+      onReconnect(reason, generation) { reconnects.push([reason, generation]); }
+    });
+    hls.emit('manifest', 'manifest', { levels: [] });
+    video.setBuffered([[0, 2]]);
+    hls.emit('fragment', 'fragment', {});
+    video.emit('play');
+    video.currentTime = 10;
+    video.emit('timeupdate');
+
+    await wait(180);
+    ok(hls.calls.startLoadCalls >= 1, 'HLS stall first resumes the existing loader');
+    ok(reconnects.length === 0, 'lightweight recovery is tried before a reconnect');
+    await wait(180);
+    ok(reconnects.length === 1, 'exhausted lightweight recovery requests one fresh reconnect');
+    ok(reconnects[0][1] > 0, 'reconnect callback receives a cancellable generation');
+    instance.destroy();
+  }
+
+  // 16. MPEG-TS stalls use unload/load rather than recreating the HLS player.
+  {
+    const video = videoStub();
+    const ts = mpegtsStub();
+    const instance = LivePlayer.play({
+      video, mpegts: ts.mpegts, engine: 'mpegts.js', format: 'mpegts',
+      url: 'http://example.test/stalled.ts', handlers: handlersStub(),
+      watchdogIntervalMs: 20, stallTimeoutMs: 60, reconnectDelayMs: 1
+    });
+    video.setBuffered([[0, 2]]);
+    video.emit('progress');
+    video.emit('play');
+    video.currentTime = 4;
+    video.emit('timeupdate');
+    await wait(180);
+    ok(ts.calls.unloadCalls >= 1 && ts.calls.loadCalls >= 2,
+      'MPEG-TS stall uses its own bounded unload/reload path');
+    instance.destroy();
+  }
+
+  // 17. A channel switch cancels a pending reconnect from the old channel.
+  {
+    const video = videoStub();
+    const hls = hlsStub();
+    const reconnects = [];
+    let sawStatus = false;
+    const instance = LivePlayer.play({
+      video, Hls: hls.Hls, engine: 'hls.js', format: 'hls',
+      url: 'http://example.test/switch.m3u8',
+      handlers: { onStatus(message) {
+        if (/Reconnecting to the latest live data/.test(message)) sawStatus = true;
+      } },
+      watchdogIntervalMs: 20, stallTimeoutMs: 60, reconnectDelayMs: 100,
+      onReconnect(reason, generation) { reconnects.push(generation); }
+    });
+    hls.emit('manifest', 'manifest', { levels: [] });
+    video.setBuffered([[0, 2]]);
+    hls.emit('fragment', 'fragment', {});
+    video.emit('play');
+    for (let i = 0; i < 40 && !sawStatus; i += 1) await wait(30);
+    ok(sawStatus, 'watchdog reaches a pending reconnect before the channel switch');
+    instance.destroy();
+    await wait(500);
+    ok(reconnects.length === 0, 'destroying the old channel cancels its pending reconnect');
   }
 
   console.log('live-player.test.js: ' + checks + ' checks passed');

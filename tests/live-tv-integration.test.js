@@ -91,6 +91,49 @@ test('no active Live TV runtime file contains a Render proxy URL', () => {
   }
 });
 
+test('Live TV has four HLS quality preferences and disables them for single-quality streams', () => {
+  const tv = read('tv.html');
+  assert.match(tv, /id="liveQuality"/);
+  assert.match(tv, />Auto</);
+  assert.match(tv, />Data Saver</);
+  assert.match(tv, />Balanced</);
+  assert.match(tv, />Best</);
+  assert.match(tv, /quality:\s*liveQualityMode/);
+  assert.match(tv, /qualitySelect\.disabled = !hlsStream/);
+  assert.match(tv, /setQuality\(liveQualityMode\)/);
+  assert.doesNotMatch(read('index.html'), /id="liveQuality"/,
+    'the Movies player must not gain Live TV quality controls');
+});
+
+test('Live TV reconnect path is generation-aware and refreshes live content', () => {
+  const tv = read('tv.html');
+  const player = read('js/live-player.js');
+  assert.match(tv, /onReconnect:\s*function/);
+  assert.match(tv, /playGen !== playGeneration/);
+  assert.match(tv, /reconnectCurrentStream/);
+  assert.match(player, /recoveryGeneration/);
+  assert.match(player, /requestFullReconnect/);
+  assert.match(player, /seekLiveEdge/);
+  assert.match(player, /stopWatchdog/);
+  assert.match(player, /video\.paused/);
+});
+
+test('Live TV playback adapter exposes runtime quality changes', () => {
+  const player = require(path.join(ROOT, 'js/live-player.js'));
+  const instance = player.play({
+    video: {
+      addEventListener() {}, removeEventListener() {}, play() { return Promise.resolve(); },
+      pause() {}, load() {}, removeAttribute() {}, buffered: { length: 0 },
+      currentTime: 0, readyState: 0, canPlayType() { return 'probably'; }
+    },
+    engine: 'native', format: 'mp4', url: 'http://x/a.mp4',
+    Hls: null, mpegts: null, handlers: {}
+  });
+  assert.equal(instance.setQuality('best'), 'best');
+  assert.equal(instance.quality(), 'best');
+  instance.destroy();
+});
+
 test('StreamDetector builds Smart Proxy playback URLs', () => {
   const detector = require(path.join(ROOT, 'js/stream-detector.js'));
   const url = detector.proxyUrl('https://proxy.example/', 'http://stream.test/live?token=abc');

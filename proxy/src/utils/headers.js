@@ -33,7 +33,12 @@ function upstreamRequestHeaders(req, options) {
     'User-Agent': userAgentFor(options),
     Accept: String(options.upstreamAccept || '*/*'),
     'Accept-Encoding': 'identity',
-    Connection: 'close'
+    Connection: 'close',
+    // Live playlists are frequently cached even when the origin intends them
+    // to be fresh. Asking every upstream read for a revalidation prevents an
+    // old EXT-X-MEDIA-SEQUENCE window from being replayed after recovery.
+    'Cache-Control': 'no-cache',
+    Pragma: 'no-cache'
   };
 
   // Only a small, explicitly configured set of headers is allowed upstream.

@@ -326,6 +326,7 @@ input[type="range"]:focus-visible {
   text-align: left;
 }
 .pv-option:hover { background: rgba(255,255,255,.14); color: #fff; }
+.pv-option[data-choice-id] { border-radius: 8px; white-space: normal; line-height: 1.2; }
 .pv-option.active { background: var(--pv-red); border-color: var(--pv-red); color: #fff; font-weight: 700; }
 .pv-option-empty { color: var(--pv-muted); font-size: .76rem; padding: .3rem .35rem; }
 

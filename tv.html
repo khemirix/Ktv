@@ -193,6 +193,14 @@
           </div>
           <span class="modal-channel-name" id="modalName">Channel</span>
           <span class="player-status loading ms-2" id="playerStatus">LOADING</span>
+          <select id="liveQuality" class="form-select form-select-sm ms-2"
+                  style="width:auto;font-size:0.7rem;background:#1a1a1a;color:#fff;border-color:rgba(255,255,255,0.18)"
+                  aria-label="Live TV quality" title="HLS quality preference">
+            <option value="auto">Auto</option>
+            <option value="data-saver">Data Saver</option>
+            <option value="balanced">Balanced</option>
+            <option value="best">Best</option>
+          </select>
         </div>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
@@ -219,9 +227,20 @@
   var channels = [];
   var activeCategory = 'All';
   var currentPlayer = null;
+  var currentChannel = null;
+  var currentDetected = null;
   var activeDetectionController = null;
   var playerModal = null;
   var playGeneration = 0;
+  var liveQualityMode = 'auto';
+
+  function readLiveQuality() {
+    try {
+      var saved = localStorage.getItem('ktvLiveQuality');
+      if (['auto', 'data-saver', 'balanced', 'best'].indexOf(saved) !== -1) return saved;
+    } catch (e) {}
+    return 'auto';
+  }
 
   // One configuration source: js/smart-proxy-config.js.
   function proxyBase() {
@@ -254,6 +273,18 @@
 
   window.addEventListener('DOMContentLoaded', function() {
     playerModal = new bootstrap.Modal(document.getElementById('tvPlayerModal'));
+
+    liveQualityMode = readLiveQuality();
+    var qualitySelect = document.getElementById('liveQuality');
+    qualitySelect.value = liveQualityMode;
+    qualitySelect.disabled = true;
+    qualitySelect.title = 'Quality is available for HLS streams only.';
+    qualitySelect.addEventListener('change', function() {
+      liveQualityMode = this.value;
+      if (currentPlayer && typeof currentPlayer.setQuality === 'function') {
+        currentPlayer.setQuality(liveQualityMode);
+      }
+    });
 
     document.getElementById('tvPlayerModal').addEventListener('hidden.bs.modal', function() {
       stopStream();
@@ -352,9 +383,42 @@
       try { currentPlayer.destroy(); } catch(e) {}
       currentPlayer = null;
     }
+    currentChannel = null;
+    currentDetected = null;
+    var qualitySelect = document.getElementById('liveQuality');
+    if (qualitySelect) {
+      qualitySelect.disabled = true;
+      qualitySelect.title = 'Quality is available for HLS streams only.';
+    }
     var video = document.getElementById('tvVideo');
     video.pause();
     video.src = '';
+  }
+
+  // Called by the Live TV watchdog after lightweight recovery is exhausted.
+  // A new detection request gets fresh playlist/segment URLs, so an old
+  // buffered window can never be replayed into the newly selected channel.
+  function reconnectCurrentStream(reason, recoveryGeneration, playGen) {
+    if (playGen !== playGeneration || !currentChannel || !currentDetected) return;
+    var video = document.getElementById('tvVideo');
+    if (currentPlayer) {
+      try { currentPlayer.destroy(); } catch (e) {}
+      currentPlayer = null;
+    }
+    if (activeDetectionController) {
+      try { activeDetectionController.abort(); } catch (e) {}
+      activeDetectionController = null;
+    }
+    setStatus('loading');
+    showLoader(true, (reason || 'Live playback stalled.') + ' Reconnecting to the live edge...');
+
+    var state = { allowed: false, used: true, forceFallback: false };
+    var via = String(currentDetected.via || '').toLowerCase();
+    if (streamRequiresProxy(currentChannel) || /proxy/i.test(via)) {
+      playViaSmartProxy(currentChannel, playGen, video, [], state);
+    } else {
+      detectDirectly(currentChannel, playGen, video, [], state);
+    }
   }
 
   function applyDetected(detected, generation, video, ch, state) {
@@ -371,6 +435,17 @@
       return;
     }
 
+    currentChannel = ch;
+    currentDetected = detected;
+    var hlsStream = detected.engine === 'hls.js' || detected.format === 'hls';
+    var qualitySelect = document.getElementById('liveQuality');
+    if (qualitySelect) {
+      qualitySelect.disabled = !hlsStream;
+      qualitySelect.title = hlsStream
+        ? 'HLS quality preference (Auto, Data Saver, Balanced, Best)'
+        : 'Quality is available for HLS streams only.';
+    }
+
     showLoader(true, 'Starting ' + detected.format.toUpperCase() +
       ' via ' + detected.via + '...');
 
@@ -380,8 +455,12 @@
       format: detected.format,
       url: detected.mediaUrl,
       message: detected.message,
+      quality: liveQualityMode,
       originalUrl: detected.originalUrl || ch.stream,
       metadata: ch,
+      onReconnect: function (reason, recoveryGeneration) {
+        reconnectCurrentStream(reason, recoveryGeneration, generation);
+      },
       handlers: {
         onStatus: function (message) {
           if (generation === playGeneration) showLoader(true, message);

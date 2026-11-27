@@ -88,6 +88,8 @@ var PlayerController = (function () {
       subtitleEnabled: true,
       subtitleLanguage: 'ar',
       subtitleLanguages: [],
+      subtitleChoices: [],
+      subtitleSelectedId: '',
       subtitleProvider: 'auto',
       subtitleSize: 'medium',
       subtitleBackground: 'dark'
@@ -127,6 +129,8 @@ var PlayerController = (function () {
         subtitleEnabled: state.subtitleEnabled,
         subtitleLanguage: state.subtitleLanguage,
         subtitleLanguages: state.subtitleLanguages.slice(),
+        subtitleChoices: state.subtitleChoices.slice(),
+        subtitleSelectedId: state.subtitleSelectedId,
         subtitleProvider: state.subtitleProvider,
         subtitleSize: state.subtitleSize,
         subtitleBackground: state.subtitleBackground,
@@ -273,6 +277,7 @@ var PlayerController = (function () {
       var meta = {
         imdbId: opts.imdbId || null,
         type: opts.type || 'movie',
+        title: opts.title || '',
         season: opts.season,
         episode: opts.episode
       };
@@ -303,6 +308,8 @@ var PlayerController = (function () {
           state.subtitleEnabled = status !== 'off';
           if (info) {
             state.subtitleLanguages = info.languages || [];
+            state.subtitleChoices = info.choices || [];
+            state.subtitleSelectedId = info.selectedId || '';
             state.subtitleProvider = info.provider || state.subtitleProvider;
             state.subtitleLanguage = info.language || state.subtitleLanguage;
           }
@@ -325,6 +332,7 @@ var PlayerController = (function () {
     function open(links, title, opts) {
       var myToken = ++token;
       opts = opts || {};
+      if (!opts.title) opts.title = title || '';
       if (player) { player.destroy(); player = null; }
       if (subs) { subs.destroy(); subs = null; }
       if (unsubscribeAudio) { unsubscribeAudio(); unsubscribeAudio = null; }
@@ -343,7 +351,11 @@ var PlayerController = (function () {
       state.currentAudioTrack = -1;
       state.subtitleStatus = 'loading';
       state.subtitleName = '';
-      state.subtitleLanguages = [];
+      state.subtitleLanguages = ((window.Subtitles && Subtitles.languages) || []).map(function (lang) {
+        return { code: lang.code, label: lang.label, count: 0 };
+      });
+      state.subtitleChoices = [];
+      state.subtitleSelectedId = '';
       state.subtitleProvider = validStoredProvider();
       state.subtitleLanguage = storageGet('ktv_sub_lang') || 'ar';
       state.remembered = !!storageGet(QUALITY_PREF_KEY);
@@ -502,6 +514,22 @@ var PlayerController = (function () {
       var ok = subs.setLanguage(code);
       if (ok) {
         state.subtitleLanguage = code;
+        state.subtitleSelectedId = '';
+        state.subtitleName = '';
+        state.subtitleStatus = 'none';
+        emitState();
+      }
+      return ok;
+    }
+    function chooseSubtitle(id) {
+      if (!subs || typeof subs.selectSubtitle !== 'function') return false;
+      var ok = subs.selectSubtitle(id);
+      if (ok) {
+        var choices = state.subtitleChoices.slice();
+        for (var i = 0; i < choices.length; i++) {
+          if (String(choices[i].id) === String(id)) state.subtitleName = choices[i].name || '';
+        }
+        state.subtitleSelectedId = String(id);
         emitState();
       }
       return ok;
@@ -600,6 +628,7 @@ var PlayerController = (function () {
       setSubtitleEnabled: setSubtitleEnabled,
       setSubtitleProvider: setSubtitleProvider,
       setSubtitleLanguage: setSubtitleLanguage,
+      chooseSubtitle: chooseSubtitle,
       setSubtitleSize: setSubtitleSize,
       setSubtitleBackground: setSubtitleBackground,
       setAudioTrack: setAudioTrack,

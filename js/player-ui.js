@@ -32,6 +32,7 @@ var PlayerUI = (function () {
     var lastLinkKey = '';
     var lastAudioKey = '';
     var lastLanguageKey = '';
+    var lastChoiceKey = '';
     var lastProviderKey = '';
     var lastSpeedKey = '';
     var scrubbing = false;
@@ -189,20 +190,53 @@ var PlayerUI = (function () {
         (s.subtitleStatus === 'loading' ? 'Loading…' : s.subtitleStatus));
 
       var langList = el('subtitleLanguageList');
-      var langKey = s.subtitleLanguages.map(function (l) { return l.code + ':' + l.label; }).join('|');
+      var allowed = { ar: true, fr: true, en: true, pl: true };
+      var languages = (s.subtitleLanguages || []).filter(function (lang) {
+        return lang && allowed[lang.code];
+      });
+      if (!languages.length && window.Subtitles && Subtitles.languages) {
+        languages = Subtitles.languages.map(function (lang) {
+          return { code: lang.code, label: lang.label, count: 0 };
+        });
+      }
+      var langKey = languages.map(function (l) {
+        return l.code + ':' + l.label + ':' + (l.count || 0);
+      }).join('|') + ':' + s.subtitleLanguage;
       if (langList && langKey !== lastLanguageKey) {
         lastLanguageKey = langKey;
         langList.innerHTML = '';
-        if (!s.subtitleLanguages.length) {
-          langList.innerHTML = '<div class="pv-option-empty">No languages reported by this provider</div>';
+        languages.forEach(function (lang) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'pv-option' + (lang.code === s.subtitleLanguage ? ' active' : '');
+          btn.setAttribute('data-code', lang.code);
+          btn.textContent = lang.label + ' (' + (Number(lang.count) || 0) + ')';
+          langList.appendChild(btn);
+        });
+      }
+
+      var choiceList = el('subtitleChoiceList');
+      var choices = s.subtitleChoices || [];
+      var choiceKey = s.subtitleLanguage + '|' + s.subtitleSelectedId + '|' + choices.map(function (item) {
+        return item.id + ':' + item.name + ':' + (item.providerLabel || item.provider || '');
+      }).join('|');
+      if (choiceList && choiceKey !== lastChoiceKey) {
+        lastChoiceKey = choiceKey;
+        choiceList.innerHTML = '';
+        if (!choices.length) {
+          choiceList.innerHTML = '<div class="pv-option-empty">' +
+            (s.subtitleStatus === 'loading' ? 'Searching…' : 'No subtitles for this language') +
+            '</div>';
         } else {
-          s.subtitleLanguages.forEach(function (lang) {
+          choices.forEach(function (item) {
             var btn = document.createElement('button');
             btn.type = 'button';
-            btn.className = 'pv-option' + (lang.code === s.subtitleLanguage ? ' active' : '');
-            btn.setAttribute('data-code', lang.code);
-            btn.textContent = lang.label;
-            langList.appendChild(btn);
+            btn.className = 'pv-option' + (item.id === s.subtitleSelectedId ? ' active' : '');
+            btn.setAttribute('data-choice-id', String(item.id));
+            var provider = item.providerLabel || item.provider || 'Provider';
+            btn.textContent = provider + ' · ' + (item.release || item.name || 'Subtitle');
+            btn.title = [provider, item.release, item.name].filter(Boolean).join('\n');
+            choiceList.appendChild(btn);
           });
         }
       }
@@ -367,6 +401,9 @@ var PlayerUI = (function () {
       });
       delegate(el('subtitleLanguageList'), '.pv-option[data-code]', function (node) {
         controller.setSubtitleLanguage(node.getAttribute('data-code'));
+      });
+      delegate(el('subtitleChoiceList'), '.pv-option[data-choice-id]', function (node) {
+        controller.chooseSubtitle(node.getAttribute('data-choice-id'));
       });
       delegate(el('subtitleProviderList'), '.pv-option[data-id]', function (node) {
         controller.setSubtitleProvider(node.getAttribute('data-id'));

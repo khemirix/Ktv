@@ -183,6 +183,7 @@ function createContext() {
     attach() {
       return {
         setEnabled() {}, setProvider() {}, setLanguage() { return true; },
+        selectSubtitle() { return true; },
         setSize() {}, setBackground() {}, resync() {}, forceReload() {},
         getState() { return { status: 'on', languages: [], enabled: true }; },
         destroy() {}
